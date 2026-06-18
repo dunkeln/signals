@@ -1,0 +1,53 @@
+{
+  "version": 1,
+  "skills": {
+    "4x4": {
+      "source": "dunkeln/skills",
+      "sourceType": "github",
+      "skillPath": "skills/4x4/SKILL.md",
+      "computedHash": "4b39c0d94e3e3bcc9a0ddea463020047cd5b0033f6ae51246582ac65c464325b"
+    },
+    "codegen": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/codegen/SKILL.md",
+      "computedHash": "daf0352381a7de74c7d7784f683e4bb5c6e285301d6adf5e993d72dfa5371b47"
+    },
+    "core": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/core/SKILL.md",
+      "computedHash": "8cff0bce16c16090f2b822e7083f24416a45d3d69757475a041c5ee672ee2d6f"
+    },
+    "mcp": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/mcp/SKILL.md",
+      "computedHash": "8601f81c837895c306f30bf75ec494606f9213ae0c13d758c07059ff78540326"
+    },
+    "premortem": {
+      "source": "dunkeln/skills",
+      "sourceType": "github",
+      "skillPath": "skills/premortem/SKILL.md",
+      "computedHash": "becaaf4386a2e2398aaf9cf6df352693ce0e2e08389bfa000cc3a61986922dd7"
+    },
+    "react": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/react/SKILL.md",
+      "computedHash": "42e6c3acd47b1f2374b7401fae31c5b496a3e12b0949289c9f5b60513c519316"
+    },
+    "shadcn": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/shadcn/SKILL.md",
+      "computedHash": "d6a9be8eeedea18343b5b15d6ac481a55436fe40db4b65d59858388072c239c4"
+    },
+    "zustand": {
+      "source": "vercel-labs/json-render",
+      "sourceType": "github",
+      "skillPath": "skills/zustand/SKILL.md",
+      "computedHash": "ecf89b93e27bb9283f373a65eeda302dac1bf89575ecd53edbaef53dc1a743f8"
+    }
+  }
+}
