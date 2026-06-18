@@ -3,16 +3,22 @@ import {
   buildSignalChartProtocolState,
   type SignalChartProtocolState,
 } from "@/lib/json-render/signal-chart-protocol";
-import { generateSignalChartDataset } from "@/lib/signal/generated-chart-data";
-import type { SignalGeneratedChartDataset } from "@/lib/signal/generated-chart-agent";
+import {
+  generateSignalChartDataset,
+  type SignalGeneratedChartDataset,
+} from "@/lib/signal/generated-chart-data";
+import {
+  buildSignalCanonicalState,
+  type SignalCanonicalState,
+} from "@/lib/signal/canonical-state";
 import {
   buildSignalIntelligenceState,
   type SignalIntelligenceState,
 } from "@/lib/signal/intelligence";
 import {
-  buildSignalOperatingMapState,
-  type SignalOperatingMapState,
-} from "@/lib/signal/operating-map";
+  buildSignalWorkflowMap,
+  type SignalWorkflowMapData,
+} from "@/lib/signal/workflow-map";
 
 export interface SignalPageState {
   client: {
@@ -20,7 +26,8 @@ export interface SignalPageState {
     label: string;
   };
   signal: SignalIntelligenceState;
-  operatingMap: SignalOperatingMapState;
+  canonical: SignalCanonicalState;
+  workflowMap: SignalWorkflowMapData;
   chartProtocol: SignalChartProtocolState;
   generatedChartData: SignalGeneratedChartDataset;
 }
@@ -33,7 +40,8 @@ export async function buildSignalPageState(
   fixtureRoute: SignalFixtureRoute,
 ): Promise<SignalPageState> {
   const signal = buildSignalIntelligenceState(fixtureRoute.ingress);
-  const operatingMap = buildSignalOperatingMapState(fixtureRoute.ingress);
+  const canonical = buildSignalCanonicalState(fixtureRoute.ingress);
+  const workflowMap = buildSignalWorkflowMap(canonical);
 
   return {
     client: {
@@ -41,8 +49,9 @@ export async function buildSignalPageState(
       label: fixtureRoute.label,
     },
     signal,
-    operatingMap,
+    canonical,
+    workflowMap,
     chartProtocol: buildSignalChartProtocolState(),
-    generatedChartData: generateSignalChartDataset(signal, operatingMap),
+    generatedChartData: generateSignalChartDataset(signal, workflowMap),
   };
 }

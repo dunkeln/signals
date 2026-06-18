@@ -17,15 +17,10 @@ export const signalCatalog = defineCatalog(schema, {
       description:
         "Frame for Signal intelligence views rendered from deterministic state.",
     },
-    DomainCoverageChart: {
+    WorkflowMapSankey: {
       props: dataPathProps,
       description:
-        "Stacked bar chart over Signal domain dimensions found in telemetry.",
-    },
-    ServiceFlowSankey: {
-      props: dataPathProps,
-      description:
-        "Sankey chart over precomputed telemetry kind to Signal lane links.",
+        "Sankey chart over canonical entity-instance flow with evidence-backed edges.",
     },
     SourceEvidenceTable: {
       props: dataPathProps,

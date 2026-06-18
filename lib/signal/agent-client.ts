@@ -1,13 +1,11 @@
+import type { SignalGeneratedChartDataset } from "@/lib/signal/generated-chart-data";
+
 export interface SignalAgentRequest {
   clientSlug: string;
   message: string;
 }
 
-export interface SignalAgentResponse {
-  message: string;
-  evidenceSourceIds: string[];
-  suggestedPrompts: string[];
-}
+export type SignalAgentResponse = SignalGeneratedChartDataset;
 
 export async function submitSignalPrompt(
   request: SignalAgentRequest,
@@ -20,9 +18,7 @@ export async function submitSignalPrompt(
     body: JSON.stringify(request),
   });
 
-  const payload = (await response.json()) as
-    | SignalAgentResponse
-    | { error?: string };
+  const payload = (await response.json()) as SignalAgentResponse | { error?: string };
 
   if (!response.ok) {
     throw new Error(getErrorMessage(payload));

@@ -7,7 +7,6 @@ import {
   SettingsIcon,
 } from "lucide-react";
 
-import { SignalPrompt } from "@/components/signal-prompt";
 import { SiteBreadcrumb } from "@/components/site-breadcrumb";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -36,8 +35,6 @@ export default function RootLayout({
                 <SiteBreadcrumb />
               </div>
             </header>
-
-            <SignalPrompt />
 
             <div className="debug-layout relative flex flex-1 overflow-hidden pb-24">
               <aside

@@ -6,6 +6,15 @@ import type {
   RawTraceSpan,
 } from "@/lib/fixtures/acme-base-sandbox";
 
+/**
+ * Raw telemetry substrate for Signal.
+ *
+ * This module deliberately stops before procurement interpretation: it turns
+ * logs, metrics, traces, and cloud events into stable source records and
+ * evidence rows. Future intelligence layers should consume this shape instead
+ * of reaching back into fixture-specific raw records unless they are adding a
+ * new source normalizer.
+ */
 export type TelemetryKind = "log" | "metric" | "trace" | "event";
 type JsonScalar = string | number | boolean | null;
 export type AttributeValue = JsonScalar | JsonScalar[];
@@ -17,33 +26,6 @@ export interface SourceRecord {
   service: string;
   summary: string;
   attributes: Record<string, AttributeValue>;
-}
-
-export interface SignalDimensionRow {
-  dimension: string;
-  logs: number;
-  metrics: number;
-  traces: number;
-  events: number;
-  total: number;
-  sourceIds: string[];
-}
-
-export interface SignalFlowNode {
-  id: string;
-  label: string;
-}
-
-export interface SignalFlowLink {
-  source: string;
-  target: string;
-  value: number;
-  sourceIds: string[];
-}
-
-export interface SignalFlowData {
-  nodes: SignalFlowNode[];
-  links: SignalFlowLink[];
 }
 
 export interface SignalEvidenceRow {
@@ -65,8 +47,6 @@ export interface SignalIntelligenceState {
     events: number;
     records: number;
   };
-  domainCoverageRows: SignalDimensionRow[];
-  serviceFlow: SignalFlowData;
   evidenceRows: SignalEvidenceRow[];
 }
 
@@ -106,6 +86,14 @@ const serviceLanes: Record<string, string> = {
   "web-app": "workspace usage",
 };
 
+/**
+ * Builds the low-level source substrate from raw ingress.
+ *
+ * The return value is intentionally about source coverage and traceability,
+ * not root cause or workflow meaning. Callers that need Waystation-specific
+ * semantics should layer on top via `buildSignalCanonicalState`, while
+ * keeping the `evidenceRows` IDs as the audit trail for every derived claim.
+ */
 export function buildSignalIntelligenceState(
   ingress: AcmeBaseSandbox,
 ): SignalIntelligenceState {
@@ -120,12 +108,18 @@ export function buildSignalIntelligenceState(
       events: ingress.events.length,
       records: records.length,
     },
-    domainCoverageRows: buildDomainCoverageRows(records),
-    serviceFlow: buildServiceFlow(records),
     evidenceRows: records.map(toEvidenceRow),
   };
 }
 
+/**
+ * Normalizes every raw telemetry family into one evidence record contract.
+ *
+ * The IDs produced here are the durable join keys for later chart and operating
+ * map projections. If a new ingress family is added, extend this function with
+ * a source-specific normalizer and keep attributes scalar/array-only so Zod,
+ * renderers, and LLM chart generation can safely consume them.
+ */
 export function collectSourceRecords(ingress: AcmeBaseSandbox): SourceRecord[] {
   return [
     ...ingress.logs.map(fromLog),
@@ -211,89 +205,6 @@ function toScalar(value: unknown): JsonScalar {
   return String(value);
 }
 
-function buildDomainCoverageRows(
-  records: SourceRecord[],
-): SignalDimensionRow[] {
-  const groups = new Map<string, SignalDimensionRow>();
-
-  for (const record of records) {
-    for (const dimension of dimensionsForRecord(record)) {
-      const row = groups.get(dimension) ?? {
-        dimension,
-        logs: 0,
-        metrics: 0,
-        traces: 0,
-        events: 0,
-        total: 0,
-        sourceIds: [],
-      };
-
-      row[pluralKind(record.kind)] += 1;
-      row.total += 1;
-      row.sourceIds.push(record.id);
-      groups.set(dimension, row);
-    }
-  }
-
-  return Array.from(groups.values()).sort((left, right) => {
-    if (right.total !== left.total) {
-      return right.total - left.total;
-    }
-
-    return left.dimension.localeCompare(right.dimension);
-  });
-}
-
-function dimensionsForRecord(record: SourceRecord) {
-  const dimensions = new Set<string>();
-
-  for (const key of Object.keys(record.attributes)) {
-    const label = domainKeyLabels[key];
-    if (label) {
-      dimensions.add(label);
-    }
-  }
-
-  return dimensions;
-}
-
-function pluralKind(kind: TelemetryKind) {
-  return `${kind}s` as "logs" | "metrics" | "traces" | "events";
-}
-
-function buildServiceFlow(records: SourceRecord[]): SignalFlowData {
-  const nodeIds = new Set<string>();
-  const links = new Map<string, SignalFlowLink>();
-
-  for (const record of records) {
-    const source = `kind:${record.kind}`;
-    const target = `lane:${laneForService(record.service)}`;
-    const key = `${source}->${target}`;
-
-    nodeIds.add(source);
-    nodeIds.add(target);
-
-    const link = links.get(key) ?? {
-      source,
-      target,
-      value: 0,
-      sourceIds: [],
-    };
-
-    link.value += 1;
-    link.sourceIds.push(record.id);
-    links.set(key, link);
-  }
-
-  return {
-    nodes: Array.from(nodeIds).map((id) => ({
-      id,
-      label: readableNodeLabel(id),
-    })),
-    links: Array.from(links.values()),
-  };
-}
-
 function toEvidenceRow(record: SourceRecord): SignalEvidenceRow {
   return {
     sourceId: record.id,
@@ -323,8 +234,4 @@ function formatValue(value: AttributeValue) {
   }
 
   return String(value);
-}
-
-function readableNodeLabel(id: string) {
-  return id.replace(/^kind:/, "").replace(/^lane:/, "");
 }

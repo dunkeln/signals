@@ -1,25 +1,28 @@
 import type { Spec } from "@json-render/core";
 import { z } from "zod";
 
+/**
+ * Chart protocol for Signal's JSON-render surface.
+ *
+ * The protocol is the allowlist between state and UI: it names datasets,
+ * allowed components, evidence joins, and default chart intents. Keep this file
+ * strict so LLM-generated or future dynamic chart plans select from known data
+ * contracts instead of arbitrary state paths.
+ */
 const protocolVersion = "signal-chart-protocol/v0";
 const maxChartIntents = 4;
 
 const chartComponentSchema = z.enum([
-  "DomainCoverageChart",
-  "ServiceFlowSankey",
+  "WorkflowMapSankey",
   "SourceEvidenceTable",
   "GeneratedBarChart",
 ]);
 
 export const signalProtocolDatasetIdSchema = z.enum([
-  "domain_coverage",
-  "service_flow",
   "source_evidence",
-  "workflow_lanes",
-  "workflow_signals",
-  "intervention_candidates",
-  "business_impact",
-  "generated_workflow_status_by_owner",
+  "canonical_entities",
+  "workflow_map",
+  "generated_canonical_link_health_by_owner",
 ]);
 
 export const signalChartIntentSchema = z.object({
@@ -45,7 +48,7 @@ export type SignalChartIntent = z.infer<typeof signalChartIntentSchema>;
 export interface SignalProtocolDataset {
   id: SignalProtocolDatasetId;
   statePath: string;
-  sourceLayer: "raw_substrate" | "operating_map" | "generated_chart_data";
+  sourceLayer: "raw_substrate" | "canonical_state" | "generated_chart_data";
   allowedComponents: SignalChartComponent[];
   purpose: string;
   evidenceDataset?: SignalProtocolDatasetId;
@@ -62,24 +65,6 @@ export interface SignalChartProtocolState {
 
 const datasets: SignalProtocolDataset[] = [
   {
-    id: "domain_coverage",
-    statePath: "/signal/domainCoverageRows",
-    sourceLayer: "raw_substrate",
-    allowedComponents: ["DomainCoverageChart"],
-    purpose:
-      "Show which procurement dimensions are present across logs, metrics, traces, and events.",
-    evidenceDataset: "source_evidence",
-  },
-  {
-    id: "service_flow",
-    statePath: "/signal/serviceFlow",
-    sourceLayer: "raw_substrate",
-    allowedComponents: ["ServiceFlowSankey"],
-    purpose:
-      "Show deterministic telemetry movement into operating lanes without assigning root cause.",
-    evidenceDataset: "source_evidence",
-  },
-  {
     id: "source_evidence",
     statePath: "/signal/evidenceRows",
     sourceLayer: "raw_substrate",
@@ -87,54 +72,44 @@ const datasets: SignalProtocolDataset[] = [
     purpose: "Show source records and references behind the rendered charts.",
   },
   {
-    id: "workflow_lanes",
-    statePath: "/operatingMap/workflowLanes",
-    sourceLayer: "operating_map",
+    id: "canonical_entities",
+    statePath: "/canonical/entities",
+    sourceLayer: "canonical_state",
     allowedComponents: [],
     purpose:
-      "Expose workflow lane state for future components; not renderable until a lane component exists.",
+      "Expose canonical entity instances with parentRefs and source evidence; renderable only through derived chart datasets.",
     evidenceDataset: "source_evidence",
   },
   {
-    id: "workflow_signals",
-    statePath: "/operatingMap/workflowSignals",
-    sourceLayer: "operating_map",
-    allowedComponents: [],
+    id: "workflow_map",
+    statePath: "/workflowMap",
+    sourceLayer: "canonical_state",
+    allowedComponents: ["WorkflowMapSankey"],
     purpose:
-      "Expose source-backed workflow signals for future components; not renderable until a signal component exists.",
+      "Render the deterministic canonical workflow Sankey; nodes are canonical stages and link color carries health.",
     evidenceDataset: "source_evidence",
   },
   {
-    id: "intervention_candidates",
-    statePath: "/operatingMap/interventionCandidates",
-    sourceLayer: "operating_map",
-    allowedComponents: [],
-    purpose:
-      "Expose deterministic action-context candidates for future components; not renderable until a matching component exists.",
-    evidenceDataset: "workflow_signals",
-  },
-  {
-    id: "business_impact",
-    statePath: "/operatingMap/businessImpactRows",
-    sourceLayer: "operating_map",
-    allowedComponents: [],
-    purpose:
-      "Expose business impact rows for future components; not renderable until an impact component exists.",
-    evidenceDataset: "source_evidence",
-  },
-  {
-    id: "generated_workflow_status_by_owner",
+    id: "generated_canonical_link_health_by_owner",
     statePath: "/generatedChartData",
     sourceLayer: "generated_chart_data",
     allowedComponents: ["GeneratedBarChart"],
     purpose:
-      "Render the validated generated dataset that groups workflow lane status by owner role.",
+      "Render the validated generated dataset that groups canonical link health by owner role.",
     evidenceDataset: "source_evidence",
   },
 ];
 
 const datasetById = new Map(datasets.map((dataset) => [dataset.id, dataset]));
 
+/**
+ * Returns the protocol visible to chart planners and runtime state.
+ *
+ * Add datasets here only after their state path is stable and their allowed
+ * renderer is known. Canonical datasets can be exposed with no renderers until
+ * a projection/component exists, which prevents premature UI promises while
+ * still letting agents understand the available semantic layer.
+ */
 export function buildSignalChartProtocolState(): SignalChartProtocolState {
   return {
     version: protocolVersion,
@@ -145,7 +120,7 @@ export function buildSignalChartProtocolState(): SignalChartProtocolState {
     rules: [
       "Chart intents must name a dataset id from this protocol, not an arbitrary state path.",
       "A component may render a dataset only when the dataset explicitly allows that component.",
-      "Operating-map datasets remain visible to the protocol but blocked from rendering until matching components exist.",
+      "Canonical datasets remain visible to the protocol but blocked from rendering until matching components exist.",
       "Evidence-backed charts should carry an evidenceDataset when the protocol provides one.",
       "The compiler throws on invalid or duplicate intent ids; it does not repair malformed plans.",
     ],
@@ -155,21 +130,21 @@ export function buildSignalChartProtocolState(): SignalChartProtocolState {
 export function buildDefaultSignalChartIntents(): SignalChartIntent[] {
   return [
     {
-      id: "domain-coverage-chart",
-      component: "DomainCoverageChart",
-      dataset: "domain_coverage",
-      title: "Domain Coverage",
+      id: "workflow-map-sankey",
+      component: "WorkflowMapSankey",
+      dataset: "workflow_map",
+      title: "Canonical Workflow Map",
       rationale:
-        "Start with the raw substrate coverage before asking for workflow interpretation.",
+        "Use the canonical workflow Sankey as the source of truth for entity-instance flow.",
       evidenceDataset: "source_evidence",
     },
     {
-      id: "service-flow-sankey",
-      component: "ServiceFlowSankey",
-      dataset: "service_flow",
-      title: "Telemetry To Operating Lanes",
+      id: "generated-workflow-status-chart",
+      component: "GeneratedBarChart",
+      dataset: "generated_canonical_link_health_by_owner",
+      title: "Canonical Link Health By Owner",
       rationale:
-        "Show how source telemetry maps into deterministic operating lanes.",
+        "Show a generated secondary view derived from health metadata on canonical workflow links.",
       evidenceDataset: "source_evidence",
     },
     {
@@ -180,18 +155,17 @@ export function buildDefaultSignalChartIntents(): SignalChartIntent[] {
       rationale:
         "Keep the rendered view traceable to the source records behind each rollup.",
     },
-    {
-      id: "generated-workflow-status-chart",
-      component: "GeneratedBarChart",
-      dataset: "generated_workflow_status_by_owner",
-      title: "Workflow Status By Owner",
-      rationale:
-        "Show the first validated generated chart dataset derived from operating-map lanes.",
-      evidenceDataset: "source_evidence",
-    },
   ];
 }
 
+/**
+ * Compiles chart intents into a JSON-render spec after protocol validation.
+ *
+ * This function enforces the product boundary: an intent must use a known
+ * dataset, a permitted component, and the expected evidence dataset. If you add
+ * a richer Sankey or flow map, wire its dataset/component pair through the
+ * protocol first instead of bypassing validation in the renderer.
+ */
 export function compileSignalChartSpec(
   intents: SignalChartIntent[] = buildDefaultSignalChartIntents(),
 ): Spec {
@@ -206,9 +180,9 @@ export function compileSignalChartSpec(
       "signal-frame": {
         type: "SignalFrame",
         props: {
-          title: "Signal Intelligence Substrate",
+          title: "Canonical Workflow Map",
           description:
-            "Deterministic rollups from email-native procurement telemetry into chart-ready evidence.",
+            "Source-backed supplier evidence normalized into canonical entity flow with health carried on links.",
         },
         children,
       },

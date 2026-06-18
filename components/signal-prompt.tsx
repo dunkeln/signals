@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
-import { ArrowUpIcon } from "lucide-react";
+import { ArrowUpIcon, SquareIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
+import { useStateStore } from "@json-render/react";
 
 import { Button } from "@/components/ui/button";
 import { submitSignalPrompt } from "@/lib/signal/agent-client";
@@ -11,11 +12,12 @@ type PromptStatus = "idle" | "sending" | "answered" | "error";
 
 export function SignalPrompt() {
   const pathname = usePathname();
+  const { set } = useStateStore();
   const [message, setMessage] = React.useState("");
   const [status, setStatus] = React.useState<PromptStatus>("idle");
-  const [statusText, setStatusText] = React.useState("");
   const clientSlug = getClientSlug(pathname);
   const canSend = message.trim().length > 0 && status !== "sending";
+  const isSending = status === "sending";
 
   async function sendPrompt() {
     const prompt = message.trim();
@@ -25,22 +27,18 @@ export function SignalPrompt() {
     }
 
     setStatus("sending");
-    setStatusText("Sending");
 
     try {
-      const response = await submitSignalPrompt({
+      const generatedChartData = await submitSignalPrompt({
         clientSlug,
         message: prompt,
       });
 
+      set("/generatedChartData", generatedChartData);
       setMessage("");
       setStatus("answered");
-      setStatusText(response.message);
-    } catch (error) {
+    } catch {
       setStatus("error");
-      setStatusText(
-        error instanceof Error ? error.message : "Signal agent failed",
-      );
     }
   }
 
@@ -70,27 +68,24 @@ export function SignalPrompt() {
           setMessage(event.target.value);
           if (status !== "sending") {
             setStatus("idle");
-            setStatusText("");
           }
         }}
         onKeyDown={handleKeyDown}
         className="absolute inset-x-2 top-2 bottom-10 resize-none bg-transparent text-sm text-primary-foreground outline-none placeholder:text-primary-foreground/55"
       />
-      <div className="absolute inset-x-2 bottom-2 flex h-7 items-center justify-between gap-3">
-        <p
-          aria-live="polite"
-          className="min-w-0 truncate px-1 text-xs text-primary-foreground/55"
-        >
-          {statusText}
-        </p>
+      <div className="absolute inset-x-2 bottom-2 flex h-7 items-center justify-end">
         <Button
           type="submit"
           size="icon-sm"
-          aria-label="Send message"
+          aria-label={isSending ? "Sending message" : "Send message"}
           disabled={!canSend}
           className="size-7 rounded-full bg-primary-foreground text-primary shadow-sm hover:bg-primary-foreground/90"
         >
-          <ArrowUpIcon data-icon="inline-start" />
+          {isSending ? (
+            <SquareIcon data-icon="inline-start" fill="currentColor" />
+          ) : (
+            <ArrowUpIcon data-icon="inline-start" />
+          )}
         </Button>
       </div>
     </form>

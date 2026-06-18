@@ -14,14 +14,15 @@ import {
 } from "recharts";
 
 import { signalCatalog } from "@/lib/json-render/signal-catalog";
-import type { SignalGeneratedChartDataset } from "@/lib/signal/generated-chart-agent";
+import type { SignalGeneratedChartDataset } from "@/lib/signal/generated-chart-data";
 import type {
-  SignalDimensionRow,
   SignalEvidenceRow,
-  SignalFlowData,
-  SignalFlowLink,
-  SignalFlowNode,
 } from "@/lib/signal/intelligence";
+import type {
+  SignalWorkflowMapData,
+  SignalWorkflowMapLink,
+  SignalWorkflowMapNode,
+} from "@/lib/signal/workflow-map";
 
 interface DataPathProps {
   dataPath: string;
@@ -47,71 +48,14 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
         </div>
       </div>
     ),
-    DomainCoverageChart: ({ props }) => {
-      const rows = useChartData<SignalDimensionRow[]>(props);
+    WorkflowMapSankey: ({ props }) => {
+      const data = useChartData<SignalWorkflowMapData>(props);
 
       return (
-        <section className="min-w-0 text-foreground">
-          <ChartHeader title={props.title ?? "Domain Coverage"} />
-          <div className="h-72 overflow-x-auto overflow-y-hidden">
-            <ClientOnlyChart>
-              <BarChart
-                width={560}
-                height={288}
-                data={rows}
-                margin={{ top: 10, right: 8, bottom: 52, left: -18 }}
-              >
-                <CartesianGrid
-                  vertical={false}
-                  stroke="var(--border)"
-                  strokeDasharray="3 3"
-                />
-                <XAxis
-                  dataKey="dimension"
-                  interval={0}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                  angle={-28}
-                  textAnchor="end"
-                  height={64}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                />
-                <Tooltip
-                  cursor={{ fill: "var(--muted)" }}
-                  contentStyle={{
-                    borderRadius: 8,
-                    border: "1px solid var(--border)",
-                    boxShadow: "0 12px 30px rgb(0 0 0 / 0.08)",
-                  }}
-                />
-                <Bar dataKey="logs" stackId="kind" fill="var(--foreground)" />
-                <Bar
-                  dataKey="metrics"
-                  stackId="kind"
-                  fill="var(--muted-foreground)"
-                />
-                <Bar dataKey="traces" stackId="kind" fill="var(--border)" />
-                <Bar dataKey="events" stackId="kind" fill="var(--muted)" />
-              </BarChart>
-            </ClientOnlyChart>
-          </div>
-        </section>
-      );
-    },
-    ServiceFlowSankey: ({ props }) => {
-      const data = useChartData<SignalFlowData>(props);
-
-      return (
-        <section className="min-w-0 text-foreground">
-          <ChartHeader title={props.title ?? "Service Flow"} />
+        <section className="min-w-0 text-foreground lg:col-span-2">
+          <ChartHeader title={props.title ?? "Workflow Evidence Map"} />
           <ClientOnlyChart>
-            <VisxSankey data={data} />
+            <VisxWorkflowMapSankey data={data} />
           </ClientOnlyChart>
         </section>
       );
@@ -169,7 +113,7 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
 
       return (
         <section className="min-w-0 text-foreground lg:col-span-2">
-          <ChartHeader title={props.title ?? dataset.title} />
+          <ChartHeader title={dataset.title || props.title || "Generated Chart"} />
           <div className="h-72 overflow-x-auto overflow-y-hidden">
             <ClientOnlyChart>
               <BarChart
@@ -264,44 +208,44 @@ function ChartPlaceholder() {
   );
 }
 
-function VisxSankey({ data }: { data: SignalFlowData }) {
-  const width = 560;
-  const height = 280;
-  const graph: SankeyGraph<SignalFlowNode, SignalFlowLink> = {
+function VisxWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
+  const width = 760;
+  const height = 360;
+  const graph: SankeyGraph<SignalWorkflowMapNode, SignalWorkflowMapLink> = {
     nodes: data.nodes,
     links: data.links,
   };
 
   if (data.nodes.length === 0 || data.links.length === 0) {
     return (
-      <div className="flex h-72 items-center justify-center text-sm text-muted-foreground">
-        No flow links available.
+      <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
+        No workflow links available.
       </div>
     );
   }
 
   return (
-    <div className="h-72 overflow-hidden">
+    <div className="h-80 overflow-hidden">
       <svg
         role="img"
-        aria-label="Telemetry to operating lanes"
+        aria-label="Evidence-backed workflow map"
         viewBox={`0 0 ${width} ${height}`}
         className="h-full w-full"
       >
         <Sankey
           root={graph}
           nodeId={(node) => node.id}
-          nodeWidth={10}
-          nodePadding={16}
+          nodeWidth={12}
+          nodePadding={18}
           size={[width, height]}
         >
           {({ graph: layoutGraph }) => (
             <g>
               {layoutGraph.links.map((link, index) => (
-                <SankeyLinkPath key={index} link={link} />
+                <WorkflowMapLinkPath key={index} link={link} />
               ))}
               {layoutGraph.nodes.map((node) => (
-                <SankeyNodeRect key={node.id} node={node} />
+                <WorkflowMapNodeRect key={node.id} node={node} />
               ))}
             </g>
           )}
@@ -311,38 +255,38 @@ function VisxSankey({ data }: { data: SignalFlowData }) {
   );
 }
 
-function SankeyLinkPath({
+function WorkflowMapLinkPath({
   link,
 }: {
-  link: SankeyLink<SignalFlowNode, SignalFlowLink>;
+  link: SankeyLink<SignalWorkflowMapNode, SignalWorkflowMapLink>;
 }) {
   const path = sankeyLinkHorizontal<
-    SignalFlowNode,
-    SignalFlowLink
+    SignalWorkflowMapNode,
+    SignalWorkflowMapLink
   >()(link);
 
   return (
     <path
       d={path ?? undefined}
       fill="none"
-      stroke="var(--muted-foreground)"
-      strokeOpacity={0.28}
+      stroke={workflowStatusColor(link.status)}
+      strokeOpacity={link.support === "partial" ? 0.28 : 0.48}
       strokeWidth={Math.max(1, link.width ?? 1)}
     />
   );
 }
 
-function SankeyNodeRect({
+function WorkflowMapNodeRect({
   node,
 }: {
-  node: SankeyNode<SignalFlowNode, SignalFlowLink>;
+  node: SankeyNode<SignalWorkflowMapNode, SignalWorkflowMapLink>;
 }) {
   const x0 = node.x0 ?? 0;
   const x1 = node.x1 ?? x0;
   const y0 = node.y0 ?? 0;
   const y1 = node.y1 ?? y0;
-  const labelX = x0 < 280 ? x1 + 8 : x0 - 8;
-  const textAnchor = x0 < 280 ? "start" : "end";
+  const labelX = x0 < 380 ? x1 + 8 : x0 - 8;
+  const textAnchor = x0 < 380 ? "start" : "end";
 
   return (
     <g>
@@ -352,8 +296,8 @@ function SankeyNodeRect({
         width={Math.max(1, x1 - x0)}
         height={Math.max(1, y1 - y0)}
         rx={3}
-        fill="var(--foreground)"
-        opacity={0.88}
+        fill={workflowNodeColor(node)}
+        opacity={0.92}
       />
       <text
         x={labelX}
@@ -366,6 +310,28 @@ function SankeyNodeRect({
       </text>
     </g>
   );
+}
+
+function workflowStatusColor(status?: SignalWorkflowMapLink["status"]) {
+  switch (status) {
+    case "blocked":
+      return "var(--destructive)";
+    case "slow":
+      return "var(--muted-foreground)";
+    case "healthy":
+      return "var(--chart-2)";
+    case "moving":
+      return "var(--foreground)";
+    default:
+      return "var(--border)";
+  }
+}
+
+function workflowNodeColor(node: SignalWorkflowMapNode) {
+  switch (node.nodeKind) {
+    case "workflow_stage":
+      return "var(--border)";
+  }
 }
 
 function useChartData<Value>(props: DataPathProps): Value {
