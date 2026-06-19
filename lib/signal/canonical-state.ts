@@ -4,7 +4,11 @@ import {
   type SourceRecord,
 } from "@/lib/signal/intelligence";
 
-export type SignalWorkflowStatus = "moving" | "slow" | "blocked" | "healthy";
+export type SignalWorkflowStatus =
+  | "requested"
+  | "received"
+  | "review_required"
+  | "blocked";
 export type SignalEvidenceSupport = "strong" | "partial";
 
 export interface SignalWorkflowNode {
@@ -345,7 +349,7 @@ function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
       supplier: northstar.supplier,
       material: northstar.material,
       workflowId: northstar.workflowId,
-      status: "moving",
+      status: "received",
       summary: "RFx-related quote content was extracted for the sweeteners RFP.",
     }),
     entity({
@@ -363,7 +367,7 @@ function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
       supplier: northstar.supplier,
       material: northstar.material,
       workflowId: northstar.workflowId,
-      status: "moving",
+      status: "requested",
       summary: "The extracted RFx content is attached to the sweeteners RFP.",
     }),
     entity({
@@ -383,7 +387,7 @@ function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
       supplier: northstar.supplier,
       material: northstar.material,
       workflowId: northstar.workflowId,
-      status: "moving",
+      status: "requested",
       summary: "Northstar has a supplier-scoped boundary for this RFP workflow.",
     }),
     sourcingFieldEntity({
@@ -393,7 +397,7 @@ function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
       parentRefs: [northstar.supplierBoundaryId],
       evidenceSourceIds: quoteEvidence,
       asOf: firstTime(records, quoteEvidence),
-      status: "healthy",
+      status: "received",
       summary: "Price evidence was received from the Northstar quote sheet/body.",
     }),
     sourcingFieldEntity({
@@ -403,7 +407,7 @@ function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
       parentRefs: [northstar.supplierBoundaryId],
       evidenceSourceIds: quoteEvidence,
       asOf: firstTime(records, quoteEvidence),
-      status: "moving",
+      status: "received",
       summary: "MOQ evidence was extracted, with follow-up still visible in source telemetry.",
     }),
     sourcingFieldEntity({
@@ -413,7 +417,7 @@ function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
       parentRefs: [northstar.supplierBoundaryId],
       evidenceSourceIds: quoteEvidence,
       asOf: firstTime(records, quoteEvidence),
-      status: "moving",
+      status: "received",
       summary: "Lead-time evidence was extracted, with follow-up still visible in source telemetry.",
     }),
     entity({
@@ -431,7 +435,7 @@ function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
       supplier: northstar.supplier,
       material: northstar.material,
       workflowId: northstar.workflowId,
-      status: "slow",
+      status: "received",
       summary: "A CoA document instance was extracted from the Northstar thread.",
     }),
     entity({
@@ -452,7 +456,7 @@ function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
       material: northstar.material,
       workflowId: northstar.workflowId,
       ownerRole: "qa",
-      status: "slow",
+      status: "review_required",
       summary: "CoA extraction has low-confidence lot and micro-result fields.",
     }),
     entity({
@@ -471,7 +475,7 @@ function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
       material: northstar.material,
       workflowId: northstar.workflowId,
       ownerRole: "qa",
-      status: "slow",
+      status: "review_required",
       summary: "QA review opened for low-confidence CoA fields.",
     }),
     entity({
@@ -489,7 +493,7 @@ function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
       supplier: northstar.supplier,
       material: northstar.material,
       workflowId: northstar.workflowId,
-      status: "blocked",
+      status: "received",
       summary: "An organic certification document instance exists for Northstar.",
     }),
     entity({

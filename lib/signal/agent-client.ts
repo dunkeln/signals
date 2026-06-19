@@ -1,11 +1,11 @@
-import type { SignalGeneratedChartDataset } from "@/lib/signal/generated-chart-data";
+import type { ChartRuntimeResult } from "@/lib/protocol/v0";
 
 export interface SignalAgentRequest {
   clientSlug: string;
   message: string;
 }
 
-export type SignalAgentResponse = SignalGeneratedChartDataset;
+export type SignalAgentResponse = ChartRuntimeResult;
 
 export async function submitSignalPrompt(
   request: SignalAgentRequest,

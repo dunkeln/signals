@@ -4,6 +4,7 @@ import { JSONUIProvider, Renderer } from "@json-render/react";
 import type { Spec } from "@json-render/core";
 
 import { signalRegistry } from "@/components/json-render/signal-registry";
+import { RuntimeToast } from "@/components/runtime-toast";
 import { SignalPrompt } from "@/components/signal-prompt";
 import type { SignalPageState } from "@/lib/signal/page-state";
 
@@ -18,6 +19,7 @@ export function SignalRenderer({ spec, state }: SignalRendererProps) {
       registry={signalRegistry}
       initialState={state as unknown as Record<string, unknown>}
     >
+      <RuntimeToast />
       <SignalPrompt />
       <Renderer spec={spec} registry={signalRegistry} />
     </JSONUIProvider>

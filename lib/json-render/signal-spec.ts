@@ -1,7 +1,7 @@
 import type { Spec } from "@json-render/core";
 
-import { compileSignalChartSpec } from "@/lib/json-render/signal-chart-protocol";
+import { compileChartSpec } from "@/lib/protocol/v0";
 
 export function buildSignalSpec(): Spec {
-  return compileSignalChartSpec();
+  return compileChartSpec();
 }

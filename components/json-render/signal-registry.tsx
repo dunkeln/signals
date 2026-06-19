@@ -14,7 +14,7 @@ import {
 } from "recharts";
 
 import { signalCatalog } from "@/lib/json-render/signal-catalog";
-import type { SignalGeneratedChartDataset } from "@/lib/signal/generated-chart-data";
+import type { GeneratedChartDataset } from "@/lib/protocol/v0";
 import type {
   SignalEvidenceRow,
 } from "@/lib/signal/intelligence";
@@ -31,7 +31,7 @@ interface DataPathProps {
 
 const { registry: signalRegistry } = defineRegistry(signalCatalog, {
   components: {
-    SignalFrame: ({ props, children }) => (
+    Frame: ({ props, children }) => (
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 pb-8">
         <div className="space-y-1">
           <h1 className="text-xl font-semibold text-foreground">
@@ -53,7 +53,7 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
 
       return (
         <section className="min-w-0 text-foreground lg:col-span-2">
-          <ChartHeader title={props.title ?? "Workflow Evidence Map"} />
+          <ChartHeader title={props.title ?? "Supplier Content Flow"} />
           <ClientOnlyChart>
             <VisxWorkflowMapSankey data={data} />
           </ClientOnlyChart>
@@ -104,11 +104,18 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
       );
     },
     GeneratedBarChart: ({ props }) => {
-      const dataset = useChartData<SignalGeneratedChartDataset>(props);
+      const dataset = useChartData<GeneratedChartDataset | null>(props);
+
+      if (!dataset) {
+        return null;
+      }
+
       const measureKeys = measureKeysForDataset(dataset);
       const rows = dataset.rows.map((row) => ({
         label: row.label,
-        ...row.measures,
+        ...Object.fromEntries(
+          measureKeys.map((key) => [key, row.measures[key] ?? 0]),
+        ),
       }));
 
       return (
@@ -211,9 +218,10 @@ function ChartPlaceholder() {
 function VisxWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
   const width = 760;
   const height = 360;
+  const topInset = 22;
   const graph: SankeyGraph<SignalWorkflowMapNode, SignalWorkflowMapLink> = {
-    nodes: data.nodes,
-    links: data.links,
+    nodes: data.nodes.map((node) => ({ ...node })),
+    links: data.links.map((link) => ({ ...link })),
   };
 
   if (data.nodes.length === 0 || data.links.length === 0) {
@@ -228,19 +236,19 @@ function VisxWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
     <div className="h-80 overflow-hidden">
       <svg
         role="img"
-        aria-label="Evidence-backed workflow map"
+        aria-label="Evidence-backed supplier content flow"
         viewBox={`0 0 ${width} ${height}`}
         className="h-full w-full"
       >
         <Sankey
           root={graph}
           nodeId={(node) => node.id}
-          nodeWidth={12}
+          nodeWidth={7}
           nodePadding={18}
-          size={[width, height]}
+          size={[width, height - topInset]}
         >
           {({ graph: layoutGraph }) => (
-            <g>
+            <g transform={`translate(0 ${topInset})`}>
               {layoutGraph.links.map((link, index) => (
                 <WorkflowMapLinkPath key={index} link={link} />
               ))}
@@ -264,15 +272,36 @@ function WorkflowMapLinkPath({
     SignalWorkflowMapNode,
     SignalWorkflowMapLink
   >()(link);
+  const source = link.source as unknown as { x1?: number };
+  const target = link.target as unknown as { x0?: number };
+  const sourceX = source.x1 ?? 0;
+  const targetX = target.x0 ?? 0;
 
   return (
-    <path
-      d={path ?? undefined}
-      fill="none"
-      stroke={workflowStatusColor(link.status)}
-      strokeOpacity={link.support === "partial" ? 0.28 : 0.48}
-      strokeWidth={Math.max(1, link.width ?? 1)}
-    />
+    <g>
+      <path
+        d={path ?? undefined}
+        fill="none"
+        stroke="var(--background)"
+        strokeOpacity={0.86}
+        strokeWidth={Math.max(3, (link.width ?? 1) + 3)}
+      />
+      <path
+        d={path ?? undefined}
+        fill="none"
+        stroke={workflowStatusColor(link.status)}
+        strokeOpacity={link.support === "partial" ? 0.28 : 0.48}
+        strokeWidth={Math.max(1, link.width ?? 1)}
+      />
+      <text
+        x={(sourceX + targetX) / 2}
+        y={((link.y0 ?? 0) + (link.y1 ?? 0)) / 2 - 8}
+        textAnchor="middle"
+        className="fill-muted-foreground text-[10px]"
+      >
+        {link.contentLabel}
+      </text>
+    </g>
   );
 }
 
@@ -285,8 +314,8 @@ function WorkflowMapNodeRect({
   const x1 = node.x1 ?? x0;
   const y0 = node.y0 ?? 0;
   const y1 = node.y1 ?? y0;
-  const labelX = x0 < 380 ? x1 + 8 : x0 - 8;
-  const textAnchor = x0 < 380 ? "start" : "end";
+  const labelX = (x0 + x1) / 2;
+  const labelY = y0 - 8;
 
   return (
     <g>
@@ -301,10 +330,9 @@ function WorkflowMapNodeRect({
       />
       <text
         x={labelX}
-        y={(y0 + y1) / 2}
-        dy="0.32em"
-        textAnchor={textAnchor}
-        className="fill-muted-foreground text-[10px]"
+        y={labelY}
+        textAnchor="middle"
+        className="fill-foreground text-[10px]"
       >
         {node.label}
       </text>
@@ -316,11 +344,11 @@ function workflowStatusColor(status?: SignalWorkflowMapLink["status"]) {
   switch (status) {
     case "blocked":
       return "var(--destructive)";
-    case "slow":
+    case "review_required":
       return "var(--muted-foreground)";
-    case "healthy":
+    case "received":
       return "var(--chart-2)";
-    case "moving":
+    case "requested":
       return "var(--foreground)";
     default:
       return "var(--border)";
@@ -328,8 +356,10 @@ function workflowStatusColor(status?: SignalWorkflowMapLink["status"]) {
 }
 
 function workflowNodeColor(node: SignalWorkflowMapNode) {
-  switch (node.nodeKind) {
-    case "workflow_stage":
+  switch (node.surfaceKind) {
+    case "supplier":
+      return "var(--muted-foreground)";
+    case "client_role":
       return "var(--border)";
   }
 }
@@ -345,7 +375,7 @@ const generatedBarColors = [
   "var(--muted)",
 ];
 
-function measureKeysForDataset(dataset: SignalGeneratedChartDataset) {
+function measureKeysForDataset(dataset: GeneratedChartDataset) {
   return Array.from(
     new Set(dataset.rows.flatMap((row) => Object.keys(row.measures))),
   );

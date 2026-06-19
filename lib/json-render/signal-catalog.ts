@@ -9,23 +9,22 @@ const dataPathProps = z.object({
 
 export const signalCatalog = defineCatalog(schema, {
   components: {
-    SignalFrame: {
+    Frame: {
       props: z.object({
         title: z.string(),
         description: z.string().optional(),
       }),
-      description:
-        "Frame for Signal intelligence views rendered from deterministic state.",
+      description: "Frame for chart views rendered from deterministic state.",
     },
     WorkflowMapSankey: {
       props: dataPathProps,
       description:
-        "Sankey chart over canonical entity-instance flow with evidence-backed edges.",
+        "Sankey chart over supplier content packets flowing between client roles and supplier counterparties.",
     },
     SourceEvidenceTable: {
       props: dataPathProps,
       description:
-        "Source evidence table with Signal references preserved from ingress.",
+        "Source evidence table with references preserved from ingress.",
     },
     GeneratedBarChart: {
       props: dataPathProps,

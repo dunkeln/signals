@@ -3,16 +3,22 @@
 import * as React from "react";
 import { ArrowUpIcon, SquareIcon } from "lucide-react";
 import { usePathname } from "next/navigation";
-import { useStateStore } from "@json-render/react";
+import { useStateStore, useStateValue } from "@json-render/react";
 
 import { Button } from "@/components/ui/button";
+import { executeChartInstruction } from "@/lib/protocol/v0";
 import { submitSignalPrompt } from "@/lib/signal/agent-client";
+import type { SignalIntelligenceState } from "@/lib/signal/intelligence";
+import type { SignalRuntimeError } from "@/lib/signal/page-state";
+import type { SignalWorkflowMapData } from "@/lib/signal/workflow-map";
 
 type PromptStatus = "idle" | "sending" | "answered" | "error";
 
 export function SignalPrompt() {
   const pathname = usePathname();
   const { set } = useStateStore();
+  const signal = useStateValue<SignalIntelligenceState>("/signal");
+  const workflowMap = useStateValue<SignalWorkflowMapData>("/workflowMap");
   const [message, setMessage] = React.useState("");
   const [status, setStatus] = React.useState<PromptStatus>("idle");
   const clientSlug = getClientSlug(pathname);
@@ -29,15 +35,36 @@ export function SignalPrompt() {
     setStatus("sending");
 
     try {
-      const generatedChartData = await submitSignalPrompt({
+      if (!signal || !workflowMap) {
+        throw new Error("Signal page state is not ready.");
+      }
+
+      const runtimeResult = await submitSignalPrompt({
         clientSlug,
         message: prompt,
       });
 
+      if (runtimeResult.kind === "unsupported_request") {
+        set("/runtimeError", runtimeErrorFromUnsupported(runtimeResult));
+        setStatus("answered");
+        return;
+      }
+
+      const generatedChartInstruction = runtimeResult.instruction;
+      const generatedChartData = executeChartInstruction({
+        instruction: generatedChartInstruction,
+        workflowMap,
+        knownEvidenceSourceIds: signal.evidenceRows.map((row) => row.sourceId),
+      });
+
+      set("/generatedChartInstruction", generatedChartInstruction);
       set("/generatedChartData", generatedChartData);
+      set("/runtimeError", null);
       setMessage("");
       setStatus("answered");
-    } catch {
+    } catch (error) {
+      console.error("Signal prompt failed.", error);
+      set("/runtimeError", runtimeErrorFromFailure());
       setStatus("error");
     }
   }
@@ -98,4 +125,41 @@ function getClientSlug(pathname: string) {
   }
 
   return decodeURIComponent(pathname.split("/")[1] ?? "");
+}
+
+function runtimeErrorFromUnsupported(
+  result: Extract<
+    Awaited<ReturnType<typeof submitSignalPrompt>>,
+    { kind: "unsupported_request" }
+  >,
+): SignalRuntimeError {
+  const detail =
+    result.unsupportedChartKind && result.supportedChartKinds.length > 0
+      ? `Available chart types: ${result.supportedChartKinds
+          .map(chartKindLabel)
+          .join(", ")}.`
+      : undefined;
+
+  return {
+    id: runtimeErrorId(),
+    title: result.title,
+    message: result.message,
+    detail,
+  };
+}
+
+function runtimeErrorFromFailure(): SignalRuntimeError {
+  return {
+    id: runtimeErrorId(),
+    title: "Could not generate chart",
+    message: "The chart runtime could not complete this request.",
+  };
+}
+
+function runtimeErrorId() {
+  return `runtime-error:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+function chartKindLabel(chartKind: string) {
+  return chartKind.replaceAll("_", " ");
 }

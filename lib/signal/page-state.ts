@@ -1,12 +1,10 @@
 import type { FixtureRoute } from "@/lib/fixtures/registry";
 import {
-  buildSignalChartProtocolState,
-  type SignalChartProtocolState,
-} from "@/lib/json-render/signal-chart-protocol";
-import {
-  generateSignalChartDataset,
-  type SignalGeneratedChartDataset,
-} from "@/lib/signal/generated-chart-data";
+  buildChartProtocolState,
+  type ChartInstruction,
+  type ChartProtocolState,
+  type GeneratedChartDataset,
+} from "@/lib/protocol/v0";
 import {
   buildSignalCanonicalState,
   type SignalCanonicalState,
@@ -28,8 +26,17 @@ export interface SignalPageState {
   signal: SignalIntelligenceState;
   canonical: SignalCanonicalState;
   workflowMap: SignalWorkflowMapData;
-  chartProtocol: SignalChartProtocolState;
-  generatedChartData: SignalGeneratedChartDataset;
+  chartProtocol: ChartProtocolState;
+  generatedChartInstruction: ChartInstruction | null;
+  generatedChartData: GeneratedChartDataset | null;
+  runtimeError: SignalRuntimeError | null;
+}
+
+export interface SignalRuntimeError {
+  id: string;
+  title: string;
+  message: string;
+  detail?: string;
 }
 
 export type SignalFixtureRoute = FixtureRoute & {
@@ -51,7 +58,9 @@ export async function buildSignalPageState(
     signal,
     canonical,
     workflowMap,
-    chartProtocol: buildSignalChartProtocolState(),
-    generatedChartData: generateSignalChartDataset(signal, workflowMap),
+    chartProtocol: buildChartProtocolState(),
+    generatedChartInstruction: null,
+    generatedChartData: null,
+    runtimeError: null,
   };
 }

@@ -9,6 +9,7 @@ import {
 
 import { SiteBreadcrumb } from "@/components/site-breadcrumb";
 import { Button } from "@/components/ui/button";
+import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
@@ -62,6 +63,7 @@ export default function RootLayout({
             </div>
           </div>
         </main>
+        <Toaster />
       </body>
     </html>
   );

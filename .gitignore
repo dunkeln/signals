@@ -48,3 +48,5 @@ next-env.d.ts
 *.md
 !/README.md
 !/AGENTS.md
+!/lib/protocol/
+!/lib/protocol/**/*.md
