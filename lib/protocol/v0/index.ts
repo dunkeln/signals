@@ -42,7 +42,6 @@ export {
 
 export {
   chartRuntimeResultSchema,
-  detectUnsupportedChartRequest,
   chartInstructionSchema,
   parseChartInstruction,
   parseChartRuntimeResult,

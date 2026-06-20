@@ -1,20 +1,18 @@
 "use client";
 
 import * as React from "react";
-import { defineRegistry, useStateValue } from "@json-render/react";
-import { Sankey, sankeyLinkHorizontal } from "@visx/sankey";
-import type { SankeyGraph, SankeyLink, SankeyNode } from "@visx/sankey";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { defineRegistry, useStateStore, useStateValue } from "@json-render/react";
+import { InfoIcon, PencilIcon } from "lucide-react";
+import { SankeyDiagram } from "semiotic/network";
+import { BarChart, DonutChart, StackedBarChart } from "semiotic/ordinal";
 
 import { signalCatalog } from "@/lib/json-render/signal-catalog";
-import type { GeneratedChartDataset } from "@/lib/protocol/v0";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type { ChartInstruction, GeneratedChartDataset } from "@/lib/protocol/v0";
 import type {
   SignalEvidenceRow,
 } from "@/lib/signal/intelligence";
@@ -23,6 +21,11 @@ import type {
   SignalWorkflowMapLink,
   SignalWorkflowMapNode,
 } from "@/lib/signal/workflow-map";
+
+const workflowMapSankeySize = {
+  width: 760,
+  height: 360,
+};
 
 interface DataPathProps {
   dataPath: string;
@@ -33,15 +36,13 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
   components: {
     Frame: ({ props, children }) => (
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 pb-8">
-        <div className="space-y-1">
-          <h1 className="text-xl font-semibold text-foreground">
-            {props.title}
+        <div>
+          <h1 className="inline-flex items-start gap-1.5 text-xl font-semibold text-foreground">
+            <span>{props.title}</span>
+            {props.description ? (
+              <TitleDescriptionInfo description={props.description} />
+            ) : null}
           </h1>
-          {props.description ? (
-            <p className="max-w-2xl text-sm text-muted-foreground">
-              {props.description}
-            </p>
-          ) : null}
         </div>
         <div className="grid gap-x-8 gap-y-7 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
           {children}
@@ -52,10 +53,12 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
       const data = useChartData<SignalWorkflowMapData>(props);
 
       return (
-        <section className="min-w-0 text-foreground lg:col-span-2">
-          <ChartHeader title={props.title ?? "Supplier Content Flow"} />
+        <section
+          aria-label={props.title ?? "Supplier Content Flow"}
+          className="semiotic-signal-chart min-w-0 text-foreground lg:col-span-2"
+        >
           <ClientOnlyChart>
-            <VisxWorkflowMapSankey data={data} />
+            <SemioticWorkflowMapSankey data={data} />
           </ClientOnlyChart>
         </section>
       );
@@ -104,7 +107,11 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
       );
     },
     GeneratedBarChart: ({ props }) => {
+      const { set } = useStateStore();
       const dataset = useChartData<GeneratedChartDataset | null>(props);
+      const instruction = useStateValue<ChartInstruction | null>(
+        "/generatedChartInstruction",
+      );
 
       if (!dataset) {
         return null;
@@ -113,56 +120,109 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
       const measureKeys = measureKeysForDataset(dataset);
       const rows = dataset.rows.map((row) => ({
         label: row.label,
+        value: row.measures[measureKeys[0] ?? ""] ?? 0,
         ...Object.fromEntries(
           measureKeys.map((key) => [key, row.measures[key] ?? 0]),
         ),
       }));
+      const stackedRows = dataset.rows.flatMap((row) =>
+        measureKeys.map((key) => ({
+          label: row.label,
+          measure: key,
+          value: row.measures[key] ?? 0,
+        })),
+      );
+      const isStacked = dataset.chartKind === "stacked_bar" && measureKeys.length > 1;
+      const isDonut = dataset.chartKind === "donut";
 
       return (
-        <section className="min-w-0 text-foreground lg:col-span-2">
-          <ChartHeader title={dataset.title || props.title || "Generated Chart"} />
+        <section className="semiotic-signal-chart min-w-0 text-foreground lg:col-span-2">
+          <EditableGeneratedChartHeader
+            title={dataset.title || props.title || "Generated Chart"}
+            onCommit={(title) => {
+              set(props.dataPath, { ...dataset, title });
+
+              if (instruction) {
+                set("/generatedChartInstruction", { ...instruction, title });
+              }
+            }}
+          />
           <div className="h-72 overflow-x-auto overflow-y-hidden">
             <ClientOnlyChart>
-              <BarChart
-                width={760}
-                height={288}
-                data={rows}
-                margin={{ top: 10, right: 16, bottom: 38, left: -18 }}
-              >
-                <CartesianGrid
-                  vertical={false}
-                  stroke="var(--border)"
-                  strokeDasharray="3 3"
-                />
-                <XAxis
-                  dataKey="label"
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                />
-                <YAxis
-                  allowDecimals={false}
-                  tickLine={false}
-                  axisLine={false}
-                  tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
-                />
-                <Tooltip
-                  cursor={{ fill: "var(--muted)" }}
-                  contentStyle={{
-                    borderRadius: 8,
-                    border: "1px solid var(--border)",
-                    boxShadow: "0 12px 30px rgb(0 0 0 / 0.08)",
+              {isDonut ? (
+                <DonutChart
+                  data={rows}
+                  width={760}
+                  height={288}
+                  margin={{ top: 8, right: 120, bottom: 8, left: 120 }}
+                  categoryAccessor="label"
+                  valueAccessor="value"
+                  colorBy="label"
+                  colorScheme={generatedBarColors}
+                  innerRadius={66}
+                  cornerRadius={3}
+                  showLegend={false}
+                  showCategoryTicks
+                  enableHover
+                  accessibleTable={false}
+                  frameProps={{
+                    pieceStyle: (datum) => ({
+                      stroke: "var(--background)",
+                      lineWidth: 1,
+                      fill: generatedBarColor(String(datum.label)),
+                    }),
                   }}
                 />
-                {measureKeys.map((key, index) => (
-                  <Bar
-                    key={key}
-                    dataKey={key}
-                    stackId="generated"
-                    fill={generatedBarColors[index % generatedBarColors.length]}
-                  />
-                ))}
-              </BarChart>
+              ) : isStacked ? (
+                <StackedBarChart
+                  data={stackedRows}
+                  width={760}
+                  height={288}
+                  margin={{ top: 10, right: 16, bottom: 54, left: 36 }}
+                  categoryAccessor="label"
+                  valueAccessor="value"
+                  stackBy="measure"
+                  colorBy="measure"
+                  colorScheme={generatedBarColors}
+                  sort={false}
+                  showGrid
+                  showLegend={false}
+                  roundedTop={3}
+                  enableHover
+                  accessibleTable={false}
+                  frameProps={{
+                    pieceStyle: (datum) => ({
+                      stroke: "var(--background)",
+                      lineWidth: 1,
+                      fill: generatedBarColor(String(datum.measure)),
+                    }),
+                  }}
+                />
+              ) : (
+                <BarChart
+                  data={rows}
+                  width={760}
+                  height={288}
+                  margin={{ top: 10, right: 16, bottom: 54, left: 36 }}
+                  categoryAccessor="label"
+                  valueAccessor="value"
+                  color={generatedBarColors[0]}
+                  sort={false}
+                  showGrid
+                  showLegend={false}
+                  roundedTop={3}
+                  gradientFill={false}
+                  enableHover
+                  accessibleTable={false}
+                  frameProps={{
+                    pieceStyle: () => ({
+                      stroke: "var(--background)",
+                      lineWidth: 1,
+                      fill: generatedBarColors[0],
+                    }),
+                  }}
+                />
+              )}
             </ClientOnlyChart>
           </div>
         </section>
@@ -173,10 +233,105 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
 
 export { signalRegistry };
 
+function TitleDescriptionInfo({ description }: { description: string }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        aria-label="About this view"
+        className="mt-0.5 inline-flex size-4 items-center justify-center rounded-full text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+      >
+        <InfoIcon className="size-3" />
+      </TooltipTrigger>
+      <TooltipContent
+        side="right"
+        align="start"
+        sideOffset={8}
+        className="max-w-72 items-start text-left leading-5"
+      >
+        {description}
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function ChartHeader({ title }: { title: string }) {
   return (
     <div className="mb-3">
       <h2 className="text-sm font-medium text-foreground">{title}</h2>
+    </div>
+  );
+}
+
+function EditableGeneratedChartHeader({
+  title,
+  onCommit,
+}: {
+  title: string;
+  onCommit: (title: string) => void;
+}) {
+  const [isEditing, setIsEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(title);
+
+  function commitTitle() {
+    const nextTitle = draft.trim();
+    setIsEditing(false);
+
+    if (nextTitle.length > 0 && nextTitle !== title) {
+      onCommit(nextTitle);
+    } else {
+      setDraft(title);
+    }
+  }
+
+  function cancelEdit() {
+    setDraft(title);
+    setIsEditing(false);
+  }
+
+  if (isEditing) {
+    return (
+      <form
+        className="mb-3"
+        onSubmit={(event) => {
+          event.preventDefault();
+          commitTitle();
+        }}
+      >
+        <input
+          autoFocus
+          aria-label="Generated chart title"
+          value={draft}
+          onBlur={commitTitle}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              cancelEdit();
+            } else if (event.key === "Enter") {
+              event.preventDefault();
+              commitTitle();
+            }
+          }}
+          className="h-6 w-full max-w-sm rounded-sm border border-border bg-background px-1.5 text-sm font-medium text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
+        />
+      </form>
+    );
+  }
+
+  return (
+    <div className="mb-3 flex items-center gap-1.5">
+      <h2 className="text-sm font-medium text-foreground">{title}</h2>
+      <button
+        type="button"
+        aria-label="Edit generated chart title"
+        onClick={() => {
+          setDraft(title);
+          setIsEditing(true);
+        }}
+        className="inline-flex size-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+      >
+        <PencilIcon className="size-3" />
+      </button>
     </div>
   );
 }
@@ -215,128 +370,76 @@ function ChartPlaceholder() {
   );
 }
 
-function VisxWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
-  const width = 760;
-  const height = 360;
-  const topInset = 22;
-  const graph: SankeyGraph<SignalWorkflowMapNode, SignalWorkflowMapLink> = {
-    nodes: data.nodes.map((node) => ({ ...node })),
-    links: data.links.map((link) => ({ ...link })),
-  };
-
+function SemioticWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
   if (data.nodes.length === 0 || data.links.length === 0) {
     return (
       <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
-        No workflow links available.
+      No workflow links available.
       </div>
     );
   }
 
+  const edges = data.links.map((link, index) => ({
+    ...link,
+    edgeId: `${link.source}:${link.target}:${link.contentLabel}:${index}`,
+  }));
+
   return (
-    <div className="h-80 overflow-hidden">
-      <svg
-        role="img"
-        aria-label="Evidence-backed supplier content flow"
-        viewBox={`0 0 ${width} ${height}`}
-        className="h-full w-full"
-      >
-        <Sankey
-          root={graph}
-          nodeId={(node) => node.id}
-          nodeWidth={7}
-          nodePadding={18}
-          size={[width, height - topInset]}
-        >
-          {({ graph: layoutGraph }) => (
-            <g transform={`translate(0 ${topInset})`}>
-              {layoutGraph.links.map((link, index) => (
-                <WorkflowMapLinkPath key={index} link={link} />
-              ))}
-              {layoutGraph.nodes.map((node) => (
-                <WorkflowMapNodeRect key={node.id} node={node} />
-              ))}
-            </g>
-          )}
-        </Sankey>
-      </svg>
+    <div
+      className="overflow-x-auto overflow-y-visible"
+      style={{ minHeight: workflowMapSankeySize.height }}
+    >
+      <SankeyDiagram
+        nodes={data.nodes}
+        edges={edges}
+        width={workflowMapSankeySize.width}
+        height={workflowMapSankeySize.height}
+        margin={{ top: 26, right: 148, bottom: 0, left: 116 }}
+        nodeIdAccessor="id"
+        sourceAccessor="source"
+        targetAccessor="target"
+        valueAccessor="value"
+        nodeLabel="label"
+        showLabels
+        nodeWidth={7}
+        nodePaddingRatio={0.34}
+        edgeOpacity={0.48}
+        enableHover
+        accessibleTable={false}
+        edgeColorBy={(edge) => workflowStatusColor(edge.status)}
+        frameProps={{
+          edgeIdAccessor: "edgeId",
+          animate: { intro: false },
+          nodeStyle: (node) => ({
+            fill: workflowNodeColor(
+              dataFromSemioticWrapper<SignalWorkflowMapNode>(node),
+            ),
+            opacity: 0.92,
+            stroke: "var(--background)",
+            lineWidth: 1,
+          }),
+          edgeStyle: (edge) => {
+            const link = dataFromSemioticWrapper<SignalWorkflowMapLink>(edge);
+
+            return {
+              stroke: workflowStatusColor(link.status),
+              fill: workflowStatusColor(link.status),
+              opacity: link.support === "partial" ? 0.28 : 0.48,
+            };
+          },
+        }}
+        tooltip={(datum) => {
+          const edge =
+            dataFromSemioticWrapper<Partial<SignalWorkflowMapLink>>(datum);
+
+          return (
+            <div className="text-xs font-medium text-foreground">
+              {edge.contentLabel ?? edge.summary ?? "Workflow link"}
+            </div>
+          );
+        }}
+      />
     </div>
-  );
-}
-
-function WorkflowMapLinkPath({
-  link,
-}: {
-  link: SankeyLink<SignalWorkflowMapNode, SignalWorkflowMapLink>;
-}) {
-  const path = sankeyLinkHorizontal<
-    SignalWorkflowMapNode,
-    SignalWorkflowMapLink
-  >()(link);
-  const source = link.source as unknown as { x1?: number };
-  const target = link.target as unknown as { x0?: number };
-  const sourceX = source.x1 ?? 0;
-  const targetX = target.x0 ?? 0;
-
-  return (
-    <g>
-      <path
-        d={path ?? undefined}
-        fill="none"
-        stroke="var(--background)"
-        strokeOpacity={0.86}
-        strokeWidth={Math.max(3, (link.width ?? 1) + 3)}
-      />
-      <path
-        d={path ?? undefined}
-        fill="none"
-        stroke={workflowStatusColor(link.status)}
-        strokeOpacity={link.support === "partial" ? 0.28 : 0.48}
-        strokeWidth={Math.max(1, link.width ?? 1)}
-      />
-      <text
-        x={(sourceX + targetX) / 2}
-        y={((link.y0 ?? 0) + (link.y1 ?? 0)) / 2 - 8}
-        textAnchor="middle"
-        className="fill-muted-foreground text-[10px]"
-      >
-        {link.contentLabel}
-      </text>
-    </g>
-  );
-}
-
-function WorkflowMapNodeRect({
-  node,
-}: {
-  node: SankeyNode<SignalWorkflowMapNode, SignalWorkflowMapLink>;
-}) {
-  const x0 = node.x0 ?? 0;
-  const x1 = node.x1 ?? x0;
-  const y0 = node.y0 ?? 0;
-  const y1 = node.y1 ?? y0;
-  const labelX = (x0 + x1) / 2;
-  const labelY = y0 - 8;
-
-  return (
-    <g>
-      <rect
-        x={x0}
-        y={y0}
-        width={Math.max(1, x1 - x0)}
-        height={Math.max(1, y1 - y0)}
-        rx={3}
-        fill={workflowNodeColor(node)}
-        opacity={0.92}
-      />
-      <text
-        x={labelX}
-        y={labelY}
-        textAnchor="middle"
-        className="fill-foreground text-[10px]"
-      >
-        {node.label}
-      </text>
-    </g>
   );
 }
 
@@ -364,6 +467,14 @@ function workflowNodeColor(node: SignalWorkflowMapNode) {
   }
 }
 
+function dataFromSemioticWrapper<Value>(datum: unknown): Value {
+  if (datum && typeof datum === "object" && "data" in datum) {
+    return (datum as { data?: Value }).data ?? (datum as Value);
+  }
+
+  return datum as Value;
+}
+
 function useChartData<Value>(props: DataPathProps): Value {
   return useStateValue(props.dataPath) as Value;
 }
@@ -374,6 +485,12 @@ const generatedBarColors = [
   "var(--border)",
   "var(--muted)",
 ];
+
+function generatedBarColor(key: string) {
+  const hash = Array.from(key).reduce((total, char) => total + char.charCodeAt(0), 0);
+
+  return generatedBarColors[hash % generatedBarColors.length];
+}
 
 function measureKeysForDataset(dataset: GeneratedChartDataset) {
   return Array.from(

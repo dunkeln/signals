@@ -96,7 +96,7 @@ type SignalEntityPayload =
   | {
       kind: "document_instance";
       documentId: string;
-      documentType: "quote_sheet" | "coa" | "certification" | "spec_sheet";
+      documentType: string;
     }
   | {
       kind: "client_request";
@@ -112,13 +112,13 @@ type SignalEntityPayload =
     }
   | {
       kind: "sourcing_field";
-      field: "price" | "moq" | "lead_time" | "incoterms" | "docs";
+      field: string;
       valueState: "received" | "requested";
     }
   | {
       kind: "document";
       documentId: string;
-      documentType: "CoA" | "Certification" | "SpecSheet";
+      documentType: string;
       confidence?: number;
       expirationDate?: string;
       certificateType?: string;
@@ -132,17 +132,6 @@ type SignalEntityPayload =
   | {
       kind: "empty_future_node";
     };
-
-const northstar = {
-  supplier: "Northstar Sweeteners",
-  material: "rice syrup blend",
-  workflowId: "rfp_2026_05_sweeteners",
-  supplierBoundaryId: "supplier-boundary:northstar:rice-syrup-blend",
-  rfpId: "rfp:rfp_2026_05_sweeteners",
-  rfxContentId: "rfx-content:thread-9d1c:northstar-sweeteners",
-  emailId: "email:thread-9d1c:northstar-sweeteners",
-  inboxId: "inbox:sourcing-demo-brand",
-};
 
 export const signalWorkflowNodes: SignalWorkflowNode[] = [
   { id: "supplier_email_inbox", tier: 0, label: "supplier email inbox" },
@@ -234,349 +223,528 @@ export function buildSignalCanonicalState(
   };
 }
 
-function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
-  const inboxEvidence = sourceIds(
-    records,
-    hasAttributeValue("mailbox", "sourcing@demo-brand.example"),
-  );
-  const northstarEmailEvidence = sourceIds(
-    records,
-    hasAttributeValue("thread_id", "thread-9d1c"),
-    hasAttributeValue("email.thread_id", "thread-9d1c"),
-    hasAttributeValue("from_domain", "northstar-sweeteners.example"),
-  );
-  const rfxEvidence = sourceIds(
-    records,
-    hasAttributeValue("workflow_id", northstar.workflowId),
-    hasAttributeValue("workflow.id", northstar.workflowId),
-    hasAttributeValue("affected_workflow_id", northstar.workflowId),
-    hasAttributeValue("template", "quote_followup_moq_leadtime"),
-    hasAttribute("supplier_row_count"),
-  );
-  const quoteEvidence = sourceIdsWhere(
-    records,
-    isNorthstarRiceSyrupRecord,
-    hasAttributeValue("document_id", "doc_tmp_quote_183"),
-    hasAttributeValue("document.id", "doc_tmp_quote_183"),
-    hasAttributeValue("parser", "xlsx-parser"),
-    hasAttribute("extracted_fields"),
-    hasAttribute("detected_currency_tokens"),
-    hasAttribute("detected_quantity_tokens"),
-  );
-  const coaEvidence = sourceIdsWhere(
-    records,
-    isNorthstarRiceSyrupRecord,
-    hasAttributeValue("document_id", "doc_tmp_7f4a"),
-    hasAttributeValue("document.id", "doc_tmp_7f4a"),
-    hasAttributeValue("document_type_guess", "coa"),
-    hasAttributeValue("document.type_guess", "coa"),
-    hasAttributeValue("parser", "textract"),
-    hasAttribute("low_confidence_fields"),
-    hasAttributeValue("highlighted_field", "lot_number"),
-  );
-  const certEvidence = sourceIdsWhere(
-    records,
-    isNorthstarRiceSyrupRecord,
-    hasAttributeValue("document_id", "doc_tmp_cert_442"),
-    hasAttributeValue("document.id", "doc_tmp_cert_442"),
-    hasAttributeValue("document_type_guess", "organic_certification"),
-    hasAttributeValue("document.type_guess", "organic_certification"),
-    hasAttribute("expiration_date"),
-    hasAttribute("cert.expiration_date"),
-    hasAttributeValue("blocking_document_id", "doc_tmp_cert_442"),
-  );
-  const qaReviewEvidence = sourceIds(
-    records,
-    hasAttributeValue("user_role", "qa"),
-    hasAttributeValue("app.user_role", "qa"),
-    hasAttributeValue("reason_codes", "ocr_low_confidence"),
-    hasAttributeValue("highlighted_field", "lot_number"),
-  );
-  const blockedGateEvidence = sourceIdsWhere(
-    records,
-    isNorthstarRiceSyrupRecord,
-    hasAttributeValue("blocked_by", "expired_certification"),
-    hasAttributeValue("edge.blocked_by", "expired_certification"),
-    hasAttributeValue("next_status", "blocked"),
-    hasAttributeValue("next_edge_status", "blocked"),
-    hasAttributeValue("edge.status.next", "blocked"),
-  );
+type ContentTarget =
+  | "price_received"
+  | "moq_received"
+  | "lead_time_received"
+  | "incoterms_received"
+  | "docs_received"
+  | "rfp_response_received";
+type DocumentTarget =
+  | "coa"
+  | "spec_sheet"
+  | "haccp_plan"
+  | "sds"
+  | "supplier_questionnaire"
+  | "insurance_certificate"
+  | "certification";
+type ClusterRecord = {
+  key: string;
+  supplier: string;
+  supplierId: string;
+  material?: string;
+  materialId: string;
+  workflowId?: string;
+  threadIds: Set<string>;
+  supplierDomains: Set<string>;
+  records: SourceRecord[];
+};
+
+const fieldTargets: Array<{
+  nodeId: ContentTarget;
+  field: string;
+  aliases: string[];
+}> = [
+  {
+    nodeId: "price_received",
+    field: "price",
+    aliases: ["unit_price", "price", "price_unit", "currency"],
+  },
+  { nodeId: "moq_received", field: "moq", aliases: ["moq", "minimum_order"] },
+  {
+    nodeId: "lead_time_received",
+    field: "lead_time",
+    aliases: ["lead_time", "lead_time_days"],
+  },
+  {
+    nodeId: "incoterms_received",
+    field: "incoterms",
+    aliases: ["incoterms", "freight_terms", "terms"],
+  },
+  {
+    nodeId: "rfp_response_received",
+    field: "rfp_response",
+    aliases: ["quote_revision", "supplier_row_count", "source_document_ids"],
+  },
+];
+
+const documentTargets: Array<{
+  nodeId: DocumentTarget;
+  documentType: string;
+  aliases: string[];
+}> = [
+  { nodeId: "coa", documentType: "CoA", aliases: ["coa", "lot_coa"] },
+  {
+    nodeId: "certification",
+    documentType: "Certification",
+    aliases: [
+      "certification",
+      "organic_certification",
+      "organic_cert",
+      "expired_certification",
+    ],
+  },
+  {
+    nodeId: "spec_sheet",
+    documentType: "SpecSheet",
+    aliases: ["spec_sheet", "specification", "spec"],
+  },
+  { nodeId: "haccp_plan", documentType: "HACCP", aliases: ["haccp", "haccp_plan"] },
+  { nodeId: "sds", documentType: "SDS", aliases: ["sds", "safety_data_sheet"] },
+  {
+    nodeId: "supplier_questionnaire",
+    documentType: "SupplierQuestionnaire",
+    aliases: ["supplier_questionnaire", "questionnaire"],
+  },
+  {
+    nodeId: "insurance_certificate",
+    documentType: "InsuranceCertificate",
+    aliases: ["insurance_certificate", "insurance"],
+  },
+];
+
+export function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
+  const inboxEntities = buildInboxEntities(records);
+  const clusters = buildSupplierClusters(records);
 
   return compactEntities([
+    ...inboxEntities,
+    ...clusters.flatMap((cluster) => buildClusterEntities(cluster, records)),
+  ]);
+}
+
+function buildInboxEntities(records: SourceRecord[]) {
+  const mailboxes = new Map<string, SourceRecord[]>();
+
+  for (const record of records) {
+    const mailbox = firstAttribute(record, ["mailbox"]);
+
+    if (mailbox) {
+      appendMap(mailboxes, mailbox, record);
+    }
+  }
+
+  return Array.from(mailboxes.entries()).map(([mailbox, mailboxRecords]) =>
     entity({
-      id: northstar.inboxId,
+      id: `inbox:${token(mailbox)}`,
       nodeId: "supplier_email_inbox",
       parentRefs: [],
       payload: {
         kind: "supplier_email_inbox",
-        mailbox: "sourcing@demo-brand.example",
+        mailbox,
       },
-      asOf: firstTime(records, inboxEvidence),
-      evidenceSourceIds: inboxEvidence,
+      asOf: firstTime(records, recordIds(mailboxRecords)),
+      evidenceSourceIds: recordIds(mailboxRecords),
       support: "strong",
-      summary: "Demo sourcing inbox received supplier email evidence.",
+      summary: `${mailbox} received supplier email evidence.`,
     }),
+  );
+}
+
+function buildSupplierClusters(records: SourceRecord[]) {
+  const clusters = new Map<string, ClusterRecord>();
+
+  for (const record of records) {
+    const supplier = supplierForRecord(record);
+
+    if (!supplier || !hasProcurementSignal(record)) {
+      continue;
+    }
+
+    const material = firstAttribute(record, ["ingredient_display_name"]);
+    const workflowId = firstAttribute(record, [
+      "workflow_id",
+      "affected_workflow_id",
+      "workflow.id",
+    ]);
+    const threadId = firstAttribute(record, ["thread_id", "email.thread_id"]);
+    const key = clusterKey({ supplier, material, workflowId, threadId });
+    const cluster =
+      clusters.get(key) ??
+      {
+        key,
+        supplier,
+        supplierId: token(supplier),
+        material,
+        materialId: token(material ?? "unspecified-material"),
+        workflowId,
+        threadIds: new Set<string>(),
+        supplierDomains: new Set<string>(),
+        records: [],
+      };
+
+    if (material && !cluster.material) {
+      cluster.material = material;
+      cluster.materialId = token(material);
+    }
+
+    if (workflowId && !cluster.workflowId) {
+      cluster.workflowId = workflowId;
+    }
+
+    if (threadId) {
+      cluster.threadIds.add(threadId);
+    }
+
+    for (const domain of attributeStrings(record, ["from_domain", "recipient_domain"])) {
+      cluster.supplierDomains.add(domain);
+    }
+
+    cluster.records.push(record);
+    clusters.set(key, cluster);
+  }
+
+  return mergeMaterialClusters(mergeSparseClusters(Array.from(clusters.values()))).filter((cluster) =>
+    cluster.records.some(hasChartableContent),
+  );
+}
+
+function mergeSparseClusters(clusters: ClusterRecord[]) {
+  const merged = clusters.filter((cluster) => cluster.material);
+  const sparseClusters = clusters.filter((cluster) => !cluster.material);
+
+  for (const cluster of sparseClusters) {
+    const compatibleTargets = merged.filter(
+      (target) =>
+        target.supplier === cluster.supplier &&
+        (target.workflowId === cluster.workflowId ||
+          intersects(target.threadIds, cluster.threadIds)),
+    );
+    const target =
+      compatibleTargets[0] ??
+      singleSupplierMaterialCluster(merged, cluster.supplier);
+
+    if (!target) {
+      merged.push(cluster);
+      continue;
+    }
+
+    target.records.push(...cluster.records);
+    for (const threadId of cluster.threadIds) {
+      target.threadIds.add(threadId);
+    }
+    for (const domain of cluster.supplierDomains) {
+      target.supplierDomains.add(domain);
+    }
+    target.workflowId = target.workflowId ?? cluster.workflowId;
+  }
+
+  return merged;
+}
+
+function mergeMaterialClusters(clusters: ClusterRecord[]) {
+  const byMaterial = new Map<string, ClusterRecord>();
+
+  for (const cluster of clusters) {
+    const key = [cluster.supplier, cluster.material ?? cluster.key].map(token).join(":");
+    const existing = byMaterial.get(key);
+
+    if (!existing) {
+      byMaterial.set(key, cluster);
+      continue;
+    }
+
+    if (
+      existing.workflowId !== cluster.workflowId &&
+      existing.workflowId !== undefined &&
+      cluster.workflowId !== undefined
+    ) {
+      byMaterial.set(`${key}:${token(cluster.workflowId)}`, cluster);
+      continue;
+    }
+
+    existing.records.push(...cluster.records);
+    existing.workflowId = existing.workflowId ?? cluster.workflowId;
+    for (const threadId of cluster.threadIds) {
+      existing.threadIds.add(threadId);
+    }
+    for (const domain of cluster.supplierDomains) {
+      existing.supplierDomains.add(domain);
+    }
+  }
+
+  return Array.from(byMaterial.values());
+}
+
+function buildClusterEntities(
+  cluster: ClusterRecord,
+  allRecords: SourceRecord[],
+): SignalEntityInstance[] {
+  const inboxId = "inbox:sourcing-demo-brand-example";
+  const firstThreadId = Array.from(cluster.threadIds)[0];
+  const emailId = `email:${cluster.supplierId}:${firstThreadId ?? cluster.key}`;
+  const rfxContentId = `rfx-content:${cluster.supplierId}:${cluster.materialId}`;
+  const workflowId =
+    cluster.workflowId ?? `workflow:${cluster.supplierId}:${cluster.materialId}`;
+  const rfpId = `rfp:${token(workflowId)}`;
+  const boundaryId = `supplier-boundary:${cluster.supplierId}:${cluster.materialId}`;
+  const rfxRecords = cluster.records.filter(isRfxRecord);
+  const clusterSourceIds = recordIds(cluster.records);
+  const rfxSourceIds = recordIds(rfxRecords.length > 0 ? rfxRecords : cluster.records);
+
+  return [
     entity({
-      id: northstar.emailId,
+      id: emailId,
       nodeId: "email_instance",
-      parentRefs: [northstar.inboxId],
+      parentRefs: [inboxId],
       payload: {
         kind: "email_instance",
-        threadId: "thread-9d1c",
-        supplierDomain: "northstar-sweeteners.example",
-        attachmentCount: 2,
+        threadId: firstThreadId ?? cluster.key,
+        supplierDomain: Array.from(cluster.supplierDomains)[0] ?? cluster.supplierId,
+        attachmentCount: numberAttribute(cluster.records, "attachment_count"),
       },
-      asOf: firstTime(records, northstarEmailEvidence),
-      evidenceSourceIds: northstarEmailEvidence,
+      asOf: firstTime(allRecords, clusterSourceIds),
+      evidenceSourceIds: clusterSourceIds,
       support: "strong",
-      supplier: northstar.supplier,
-      material: northstar.material,
-      summary: "Northstar supplier thread entered the sourcing inbox.",
+      supplier: cluster.supplier,
+      material: cluster.material,
+      workflowId,
+      summary: `${cluster.supplier} evidence entered the sourcing inbox.`,
     }),
     entity({
-      id: northstar.rfxContentId,
+      id: rfxContentId,
       nodeId: "rfx_related_content",
-      parentRefs: [northstar.emailId],
+      parentRefs: [emailId],
       payload: {
         kind: "rfx_related_content",
         requestKind: "rfp",
-        workflowId: northstar.workflowId,
-        fields: ["unit_price", "moq", "lead_time_days", "payment_terms"],
+        workflowId,
+        fields: unique(
+          cluster.records.flatMap((record) =>
+            attributeStrings(record, [
+              "extracted_fields",
+              "requested_fields",
+              "missing_fields",
+            ]),
+          ),
+        ),
       },
-      asOf: firstTime(records, rfxEvidence),
-      evidenceSourceIds: rfxEvidence,
-      support: "strong",
-      supplier: northstar.supplier,
-      material: northstar.material,
-      workflowId: northstar.workflowId,
+      asOf: firstTime(allRecords, rfxSourceIds),
+      evidenceSourceIds: rfxSourceIds,
+      support: supportForRecords(rfxRecords),
+      supplier: cluster.supplier,
+      material: cluster.material,
+      workflowId,
       status: "received",
-      summary: "RFx-related quote content was extracted for the sweeteners RFP.",
+      summary: `RFx-related content exists for ${cluster.supplier}.`,
     }),
     entity({
-      id: northstar.rfpId,
+      id: rfpId,
       nodeId: "rfp",
-      parentRefs: [northstar.rfxContentId],
+      parentRefs: [rfxContentId],
       payload: {
         kind: "client_request",
         requestKind: "rfp",
-        workflowId: northstar.workflowId,
+        workflowId,
       },
-      asOf: firstTime(records, rfxEvidence),
-      evidenceSourceIds: rfxEvidence,
-      support: "strong",
-      supplier: northstar.supplier,
-      material: northstar.material,
-      workflowId: northstar.workflowId,
+      asOf: firstTime(allRecords, rfxSourceIds),
+      evidenceSourceIds: rfxSourceIds,
+      support: supportForRecords(rfxRecords),
+      supplier: cluster.supplier,
+      material: cluster.material,
+      workflowId,
       status: "requested",
-      summary: "The extracted RFx content is attached to the sweeteners RFP.",
+      summary: `${cluster.supplier} content is attached to an RFx workflow.`,
     }),
     entity({
-      id: northstar.supplierBoundaryId,
+      id: boundaryId,
       nodeId: "supplier_boundary",
-      parentRefs: [northstar.rfpId],
+      parentRefs: [rfpId],
       payload: {
         kind: "supplier_boundary",
-        supplierId: "northstar-sweeteners",
-        sourcingProcessRef: northstar.rfxContentId,
-        clientRequestRef: northstar.rfpId,
-        enteredBoundaryAt: firstTime(records, rfxEvidence),
+        supplierId: cluster.supplierId,
+        sourcingProcessRef: rfxContentId,
+        clientRequestRef: rfpId,
+        enteredBoundaryAt: firstTime(allRecords, rfxSourceIds),
       },
-      asOf: firstTime(records, rfxEvidence),
-      evidenceSourceIds: rfxEvidence,
-      support: "strong",
-      supplier: northstar.supplier,
-      material: northstar.material,
-      workflowId: northstar.workflowId,
+      asOf: firstTime(allRecords, rfxSourceIds),
+      evidenceSourceIds: rfxSourceIds,
+      support: supportForRecords(rfxRecords),
+      supplier: cluster.supplier,
+      material: cluster.material,
+      workflowId,
       status: "requested",
-      summary: "Northstar has a supplier-scoped boundary for this RFP workflow.",
+      summary: `${cluster.supplier} has supplier-scoped content for this workflow.`,
     }),
-    sourcingFieldEntity({
-      id: "field:northstar:rice-syrup-blend:price",
-      nodeId: "price_received",
-      field: "price",
-      parentRefs: [northstar.supplierBoundaryId],
-      evidenceSourceIds: quoteEvidence,
-      asOf: firstTime(records, quoteEvidence),
-      status: "received",
-      summary: "Price evidence was received from the Northstar quote sheet/body.",
-    }),
-    sourcingFieldEntity({
-      id: "field:northstar:rice-syrup-blend:moq",
-      nodeId: "moq_received",
-      field: "moq",
-      parentRefs: [northstar.supplierBoundaryId],
-      evidenceSourceIds: quoteEvidence,
-      asOf: firstTime(records, quoteEvidence),
-      status: "received",
-      summary: "MOQ evidence was extracted, with follow-up still visible in source telemetry.",
-    }),
-    sourcingFieldEntity({
-      id: "field:northstar:rice-syrup-blend:lead-time",
-      nodeId: "lead_time_received",
-      field: "lead_time",
-      parentRefs: [northstar.supplierBoundaryId],
-      evidenceSourceIds: quoteEvidence,
-      asOf: firstTime(records, quoteEvidence),
-      status: "received",
-      summary: "Lead-time evidence was extracted, with follow-up still visible in source telemetry.",
-    }),
-    entity({
-      id: "document-instance:northstar:coa",
-      nodeId: "document_instance",
-      parentRefs: [northstar.emailId],
-      payload: {
-        kind: "document_instance",
-        documentId: "doc_tmp_7f4a",
-        documentType: "coa",
-      },
-      asOf: firstTime(records, coaEvidence),
-      evidenceSourceIds: coaEvidence,
-      support: "strong",
-      supplier: northstar.supplier,
-      material: northstar.material,
-      workflowId: northstar.workflowId,
-      status: "received",
-      summary: "A CoA document instance was extracted from the Northstar thread.",
-    }),
-    entity({
-      id: "document:northstar:coa",
-      nodeId: "coa",
-      parentRefs: ["document-instance:northstar:coa"],
-      payload: {
-        kind: "document",
-        documentId: "doc_tmp_7f4a",
-        documentType: "CoA",
-        confidence: 0.41,
-        lowConfidenceFields: ["lot_number", "micro_result"],
-      },
-      asOf: firstTime(records, coaEvidence),
-      evidenceSourceIds: coaEvidence,
-      support: "strong",
-      supplier: northstar.supplier,
-      material: northstar.material,
-      workflowId: northstar.workflowId,
-      ownerRole: "qa",
-      status: "review_required",
-      summary: "CoA extraction has low-confidence lot and micro-result fields.",
-    }),
-    entity({
-      id: "qa-gate:northstar:coa-review",
-      nodeId: "qa_gate",
-      parentRefs: ["document:northstar:coa"],
-      payload: {
-        kind: "supplier_gate",
-        gateKind: "qa_review",
-        reasonCodes: ["ocr_low_confidence", "coa_candidate"],
-      },
-      asOf: firstTime(records, qaReviewEvidence),
-      evidenceSourceIds: qaReviewEvidence,
-      support: "strong",
-      supplier: northstar.supplier,
-      material: northstar.material,
-      workflowId: northstar.workflowId,
-      ownerRole: "qa",
-      status: "review_required",
-      summary: "QA review opened for low-confidence CoA fields.",
-    }),
-    entity({
-      id: "document-instance:northstar:organic-certification",
-      nodeId: "document_instance",
-      parentRefs: [northstar.emailId],
-      payload: {
-        kind: "document_instance",
-        documentId: "doc_tmp_cert_442",
-        documentType: "certification",
-      },
-      asOf: firstTime(records, certEvidence),
-      evidenceSourceIds: certEvidence,
-      support: "strong",
-      supplier: northstar.supplier,
-      material: northstar.material,
-      workflowId: northstar.workflowId,
-      status: "received",
-      summary: "An organic certification document instance exists for Northstar.",
-    }),
-    entity({
-      id: "document:northstar:organic-certification",
-      nodeId: "certification",
-      parentRefs: ["document-instance:northstar:organic-certification"],
-      payload: {
-        kind: "document",
-        documentId: "doc_tmp_cert_442",
-        documentType: "Certification",
-        expirationDate: "2026-05-01",
-        certificateType: "organic",
-      },
-      asOf: firstTime(records, certEvidence),
-      evidenceSourceIds: certEvidence,
-      support: "strong",
-      supplier: northstar.supplier,
-      material: northstar.material,
-      workflowId: northstar.workflowId,
-      ownerRole: "qa",
-      status: "blocked",
-      summary: "Organic certification evidence is expired for the supplier boundary.",
-    }),
-    entity({
-      id: "qa-gate:northstar:organic-certification",
-      nodeId: "qa_gate",
-      parentRefs: ["document:northstar:organic-certification"],
-      payload: {
-        kind: "supplier_gate",
-        gateKind: "supplier_document_gate",
-        reasonCodes: ["expired_certification"],
-      },
-      asOf: firstTime(records, blockedGateEvidence),
-      evidenceSourceIds: blockedGateEvidence,
-      support: "strong",
-      supplier: northstar.supplier,
-      material: northstar.material,
-      workflowId: northstar.workflowId,
-      ownerRole: "qa",
-      status: "blocked",
-      summary: "Supplier document gate is blocked by expired certification evidence.",
-    }),
-  ]);
+    ...buildSourcingFieldEntities(cluster, allRecords, boundaryId, workflowId),
+    ...buildDocumentEntities(cluster, allRecords, emailId, boundaryId, workflowId),
+  ];
 }
 
-function sourcingFieldEntity({
-  id,
-  nodeId,
-  field,
-  parentRefs,
-  evidenceSourceIds,
-  asOf,
-  status,
-  summary,
-}: {
-  id: string;
-  nodeId: "price_received" | "moq_received" | "lead_time_received";
-  field: "price" | "moq" | "lead_time";
-  parentRefs: string[];
-  evidenceSourceIds: string[];
-  asOf: string;
-  status: SignalWorkflowStatus;
-  summary: string;
-}): SignalEntityInstance {
-  return entity({
-    id,
-    nodeId,
-    parentRefs,
-    payload: {
-      kind: "sourcing_field",
-      field,
-      valueState: "received",
-    },
-    asOf,
-    evidenceSourceIds,
-    support: "partial",
-    supplier: northstar.supplier,
-    material: northstar.material,
-    workflowId: northstar.workflowId,
-    ownerRole: "buyer",
-    status,
-    summary,
-  });
+function buildSourcingFieldEntities(
+  cluster: ClusterRecord,
+  allRecords: SourceRecord[],
+  boundaryId: string,
+  workflowId: string,
+) {
+  return fieldTargets
+    .map((fieldTarget) => {
+      const fieldRecords = cluster.records.filter((record) =>
+        recordMentionsAny(record, fieldTarget.aliases),
+      );
+
+      if (fieldRecords.length === 0) {
+        return undefined;
+      }
+
+      const sourceIds = recordIds(fieldRecords);
+      const status = statusForFieldRecords(fieldRecords, fieldTarget.aliases);
+
+      return entity({
+        id: `field:${cluster.supplierId}:${cluster.materialId}:${fieldTarget.field}`,
+        nodeId: fieldTarget.nodeId,
+        parentRefs: [boundaryId],
+        payload: {
+          kind: "sourcing_field",
+          field: fieldTarget.field,
+          valueState: status === "requested" ? "requested" : "received",
+        },
+        asOf: firstTime(allRecords, sourceIds),
+        evidenceSourceIds: sourceIds,
+        support: supportForRecords(fieldRecords),
+        supplier: cluster.supplier,
+        material: cluster.material,
+        workflowId,
+        ownerRole: "buyer",
+        status,
+        summary: `${fieldTarget.field} content is present in supplier evidence for ${cluster.supplier}.`,
+      });
+    })
+    .filter((instance): instance is SignalEntityInstance => instance !== undefined);
+}
+
+function buildDocumentEntities(
+  cluster: ClusterRecord,
+  allRecords: SourceRecord[],
+  emailId: string,
+  boundaryId: string,
+  workflowId: string,
+) {
+  const entities: SignalEntityInstance[] = [];
+
+  for (const target of documentTargets) {
+    const documentRecords = cluster.records.filter((record) =>
+      recordMentionsAny(record, target.aliases),
+    );
+
+    if (documentRecords.length === 0) {
+      continue;
+    }
+
+    const sourceIds = recordIds(documentRecords);
+    const status = statusForRecords(documentRecords);
+    const documentId =
+      firstPresent(documentRecords.map((record) => firstAttribute(record, [
+        "document_id",
+        "document.id",
+        "blocking_document_id",
+        "missing_document_type",
+      ]))) ?? `virtual:${target.nodeId}:${cluster.key}`;
+    const instanceId = `document-instance:${cluster.supplierId}:${cluster.materialId}:${target.nodeId}:${token(documentId)}`;
+    const documentEntityId = `document:${cluster.supplierId}:${cluster.materialId}:${target.nodeId}:${token(documentId)}`;
+
+    entities.push(
+      entity({
+        id: instanceId,
+        nodeId: "document_instance",
+        parentRefs: [emailId],
+        payload: {
+          kind: "document_instance",
+          documentId,
+          documentType: target.nodeId,
+        },
+        asOf: firstTime(allRecords, sourceIds),
+        evidenceSourceIds: sourceIds,
+        support: supportForRecords(documentRecords),
+        supplier: cluster.supplier,
+        material: cluster.material,
+        workflowId,
+        status: status === "requested" ? "requested" : "received",
+        summary: `${target.documentType} document evidence exists for ${cluster.supplier}.`,
+      }),
+      entity({
+        id: documentEntityId,
+        nodeId: target.nodeId,
+        parentRefs: [instanceId, boundaryId],
+        payload: {
+          kind: "document",
+          documentId,
+          documentType: target.documentType,
+          confidence: numericFirstAttribute(documentRecords, [
+            "extraction_confidence",
+            "min_field_confidence",
+          ]),
+          expirationDate: firstPresent(
+            documentRecords.map((record) =>
+              firstAttribute(record, ["expiration_date", "cert.expiration_date"]),
+            ),
+          ),
+          certificateType: firstPresent(
+            documentRecords.map((record) => firstAttribute(record, ["certificate_type"])),
+          ),
+          lowConfidenceFields: unique(
+            documentRecords.flatMap((record) =>
+              attributeStrings(record, ["low_confidence_fields"]),
+            ),
+          ),
+        },
+        asOf: firstTime(allRecords, sourceIds),
+        evidenceSourceIds: sourceIds,
+        support: supportForRecords(documentRecords),
+        supplier: cluster.supplier,
+        material: cluster.material,
+        workflowId,
+        ownerRole: "qa",
+        status,
+        summary: `${target.documentType} content is present in supplier evidence for ${cluster.supplier}.`,
+      }),
+    );
+
+    if (status === "review_required" || status === "blocked") {
+      entities.push(
+        entity({
+          id: `qa-gate:${cluster.supplierId}:${cluster.materialId}:${target.nodeId}:${token(status)}`,
+          nodeId: "qa_gate",
+          parentRefs: [documentEntityId],
+          payload: {
+            kind: "supplier_gate",
+            gateKind: status === "blocked" ? "supplier_document_gate" : "qa_review",
+            reasonCodes: unique(
+              documentRecords.flatMap((record) =>
+                attributeStrings(record, [
+                  "reason_codes",
+                  "blocked_by",
+                  "missing_document_type",
+                  "low_confidence_fields",
+                ]),
+              ),
+            ),
+          },
+          asOf: firstTime(allRecords, sourceIds),
+          evidenceSourceIds: sourceIds,
+          support: supportForRecords(documentRecords),
+          supplier: cluster.supplier,
+          material: cluster.material,
+          workflowId,
+          ownerRole: "qa",
+          status,
+          summary: `${target.documentType} has QA-facing status metadata in source evidence.`,
+        }),
+      );
+    }
+  }
+
+  return entities;
 }
 
 function entity(instance: SignalEntityInstance): SignalEntityInstance {
@@ -590,26 +758,6 @@ function compactEntities(instances: SignalEntityInstance[]) {
   return instances.filter((instance) => instance.evidenceSourceIds.length > 0);
 }
 
-function sourceIds(
-  records: SourceRecord[],
-  ...predicates: Array<(record: SourceRecord) => boolean>
-) {
-  return sourceIdsWhere(records, () => true, ...predicates);
-}
-
-function sourceIdsWhere(
-  records: SourceRecord[],
-  scope: (record: SourceRecord) => boolean,
-  ...predicates: Array<(record: SourceRecord) => boolean>
-) {
-  return unique(
-    records
-      .filter(scope)
-      .filter((record) => predicates.some((predicate) => predicate(record)))
-      .map((record) => record.id),
-  );
-}
-
 function firstTime(records: SourceRecord[], sourceIds: string[]) {
   const sourceIdSet = new Set(sourceIds);
   const record = records.find((candidate) => sourceIdSet.has(candidate.id));
@@ -617,42 +765,268 @@ function firstTime(records: SourceRecord[], sourceIds: string[]) {
   return record?.time ?? "2026-05-14T17:00:00.000Z";
 }
 
-function isNorthstarRiceSyrupRecord(record: SourceRecord) {
-  return (
-    hasAttributeValue("supplier_display_name", "Northstar Sweeteners")(record) ||
-    hasAttributeValue("supplier_display_name", "Northstar Sweeteners LLC")(record) ||
-    hasAttributeValue("ingredient_display_name", northstar.material)(record) ||
-    hasAttributeValue("workflow_id", northstar.workflowId)(record) ||
-    hasAttributeValue("affected_workflow_id", northstar.workflowId)(record) ||
-    hasAttributeValue("workflow.id", northstar.workflowId)(record) ||
-    hasAttributeValue("edge_id", "edge_northstar_rice_syrup_blend")(record) ||
-    hasAttributeValue("edge.id", "edge_northstar_rice_syrup_blend")(record) ||
-    hasAttributeValue("blocking_document_id", "doc_tmp_cert_442")(record) ||
-    hasAttributeValue("document_id", "doc_tmp_cert_442")(record) ||
-    hasAttributeValue("document.id", "doc_tmp_cert_442")(record) ||
-    hasAttributeValue("document_id", "doc_tmp_7f4a")(record) ||
-    hasAttributeValue("document.id", "doc_tmp_7f4a")(record) ||
-    hasAttributeValue("document_id", "doc_tmp_quote_183")(record) ||
-    hasAttributeValue("subject", "edge/edge_northstar_rice_syrup_blend")(record)
+function unique(values: string[]) {
+  return Array.from(new Set(values));
+}
+
+function recordIds(records: SourceRecord[]) {
+  return unique(records.map((record) => record.id));
+}
+
+function appendMap<Key, Value>(map: Map<Key, Value[]>, key: Key, value: Value) {
+  map.set(key, [...(map.get(key) ?? []), value]);
+}
+
+function intersects(left: Set<string>, right: Set<string>) {
+  return Array.from(left).some((value) => right.has(value));
+}
+
+function singleSupplierMaterialCluster(clusters: ClusterRecord[], supplier: string) {
+  const matches = clusters.filter(
+    (cluster) => cluster.supplier === supplier && cluster.material,
   );
+
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
-function hasAttribute(key: string) {
-  return (record: SourceRecord) => key in record.attributes;
+function supplierForRecord(record: SourceRecord) {
+  const supplier =
+    firstAttribute(record, ["supplier_display_name", "input_name"]) ??
+    domainToSupplier(firstAttribute(record, ["from_domain", "recipient_domain"]));
+
+  return supplier ? normalizeSupplierName(supplier) : undefined;
 }
 
-function hasAttributeValue(key: string, expectedValue: string) {
-  return (record: SourceRecord) => {
+function domainToSupplier(domain: string | undefined) {
+  if (!domain) {
+    return undefined;
+  }
+
+  return domain
+    .replace(/\.(example|com|co|io|net|org)$/g, "")
+    .split(/[-.]/g)
+    .filter(Boolean)
+    .map((part) => part[0]?.toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function normalizeSupplierName(value: string) {
+  return value.replace(/\s+(LLC|Inc\.?|Ltd\.?)$/i, "").trim();
+}
+
+function hasProcurementSignal(record: SourceRecord) {
+  return [
+    "thread_id",
+    "email.thread_id",
+    "workflow_id",
+    "affected_workflow_id",
+    "ingredient_display_name",
+    "extracted_fields",
+    "requested_fields",
+    "missing_fields",
+    "document_type_guess",
+    "document.type_guess",
+    "missing_document_type",
+    "edge_id",
+  ].some((key) => key in record.attributes);
+}
+
+function hasChartableContent(record: SourceRecord) {
+  return isRfxRecord(record) || fieldTargets.some((target) =>
+    recordMentionsAny(record, target.aliases),
+  ) || documentTargets.some((target) => recordMentionsAny(record, target.aliases));
+}
+
+function isRfxRecord(record: SourceRecord) {
+  return [
+    "workflow_id",
+    "affected_workflow_id",
+    "workflow.id",
+    "template",
+    "requested_fields",
+    "supplier_row_count",
+  ].some((key) => key in record.attributes);
+}
+
+function clusterKey({
+  supplier,
+  material,
+  workflowId,
+  threadId,
+}: {
+  supplier: string;
+  material?: string;
+  workflowId?: string;
+  threadId?: string;
+}) {
+  return [workflowId ?? threadId ?? "workflow", supplier, material ?? "material"]
+    .map(token)
+    .join(":");
+}
+
+function firstAttribute(record: SourceRecord, keys: string[]) {
+  return firstPresent(attributeStrings(record, keys));
+}
+
+function numericFirstAttribute(records: SourceRecord[], keys: string[]) {
+  for (const record of records) {
+    for (const key of keys) {
+      const value = record.attributes[key];
+
+      if (typeof value === "number") {
+        return value;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+function numberAttribute(records: SourceRecord[], key: string) {
+  return records.reduce((total, record) => {
+    const value = record.attributes[key];
+
+    return total + (typeof value === "number" ? value : 0);
+  }, 0);
+}
+
+function attributeStrings(record: SourceRecord, keys: string[]) {
+  return keys.flatMap((key) => {
     const value = record.attributes[key];
 
     if (Array.isArray(value)) {
-      return value.includes(expectedValue);
+      return value.map(String).filter(Boolean);
     }
 
-    return value === expectedValue;
-  };
+    if (value === undefined || value === null) {
+      return [];
+    }
+
+    return [String(value)];
+  });
 }
 
-function unique(values: string[]) {
-  return Array.from(new Set(values));
+function recordMentionsAny(record: SourceRecord, aliases: string[]) {
+  const values = new Set(
+    Object.entries(record.attributes).flatMap(([key, value]) => [
+      key,
+      ...toStrings(value),
+    ]),
+  );
+
+  return aliases.some((alias) => values.has(alias));
+}
+
+function toStrings(value: SourceRecord["attributes"][string]) {
+  if (Array.isArray(value)) {
+    return value.map(String);
+  }
+
+  if (value === null || value === undefined) {
+    return [];
+  }
+
+  return [String(value)];
+}
+
+function statusForRecords(records: SourceRecord[]): SignalWorkflowStatus {
+  if (
+    records.some((record) =>
+      attributeStrings(record, [
+        "next_status",
+        "next_edge_status",
+        "edge.status.next",
+      ]).includes("blocked") ||
+      "blocked_by" in record.attributes ||
+      "edge.blocked_by" in record.attributes,
+    )
+  ) {
+    return "blocked";
+  }
+
+  if (
+    records.some((record) =>
+      "low_confidence_fields" in record.attributes ||
+      "missing_fields" in record.attributes ||
+      attributeStrings(record, ["previous_edge_status"]).includes("needs_review"),
+    )
+  ) {
+    return "review_required";
+  }
+
+  if (
+    records.some((record) =>
+      "requested_fields" in record.attributes || "missing_document_type" in record.attributes,
+    )
+  ) {
+    return "requested";
+  }
+
+  return "received";
+}
+
+function statusForFieldRecords(
+  records: SourceRecord[],
+  aliases: string[],
+): SignalWorkflowStatus {
+  if (records.some(hasBlockedStatus)) {
+    return "blocked";
+  }
+
+  if (
+    records.some((record) =>
+      attributeStrings(record, ["low_confidence_fields"]).some((value) =>
+        aliases.includes(value),
+      ),
+    )
+  ) {
+    return "review_required";
+  }
+
+  if (
+    records.some((record) =>
+      attributeStrings(record, ["missing_fields", "requested_fields"]).some((value) =>
+        aliases.includes(value),
+      ),
+    )
+  ) {
+    return "requested";
+  }
+
+  return "received";
+}
+
+function hasBlockedStatus(record: SourceRecord) {
+  return (
+    attributeStrings(record, [
+      "next_status",
+      "next_edge_status",
+      "edge.status.next",
+    ]).includes("blocked") ||
+    "blocked_by" in record.attributes ||
+    "edge.blocked_by" in record.attributes
+  );
+}
+
+function supportForRecords(records: SourceRecord[]): SignalEvidenceSupport {
+  return records.some((record) =>
+    "low_confidence_fields" in record.attributes ||
+    "missing_fields" in record.attributes ||
+    "missing_document_type" in record.attributes,
+  )
+    ? "partial"
+    : "strong";
+}
+
+function firstPresent(values: Array<string | undefined>) {
+  return values.find((value) => value !== undefined && value.length > 0);
+}
+
+function token(value: string) {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "unknown"
+  );
 }

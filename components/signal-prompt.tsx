@@ -44,12 +44,6 @@ export function SignalPrompt() {
         message: prompt,
       });
 
-      if (runtimeResult.kind === "unsupported_request") {
-        set("/runtimeError", runtimeErrorFromUnsupported(runtimeResult));
-        setStatus("answered");
-        return;
-      }
-
       const generatedChartInstruction = runtimeResult.instruction;
       const generatedChartData = executeChartInstruction({
         instruction: generatedChartInstruction,
@@ -127,27 +121,6 @@ function getClientSlug(pathname: string) {
   return decodeURIComponent(pathname.split("/")[1] ?? "");
 }
 
-function runtimeErrorFromUnsupported(
-  result: Extract<
-    Awaited<ReturnType<typeof submitSignalPrompt>>,
-    { kind: "unsupported_request" }
-  >,
-): SignalRuntimeError {
-  const detail =
-    result.unsupportedChartKind && result.supportedChartKinds.length > 0
-      ? `Available chart types: ${result.supportedChartKinds
-          .map(chartKindLabel)
-          .join(", ")}.`
-      : undefined;
-
-  return {
-    id: runtimeErrorId(),
-    title: result.title,
-    message: result.message,
-    detail,
-  };
-}
-
 function runtimeErrorFromFailure(): SignalRuntimeError {
   return {
     id: runtimeErrorId(),
@@ -158,8 +131,4 @@ function runtimeErrorFromFailure(): SignalRuntimeError {
 
 function runtimeErrorId() {
   return `runtime-error:${Date.now()}:${Math.random().toString(36).slice(2)}`;
-}
-
-function chartKindLabel(chartKind: string) {
-  return chartKind.replaceAll("_", " ");
 }

@@ -11,21 +11,21 @@ Signal is an FDE application artifact for email-native procurement workflows.
 The goal is not to build a whole procurement platform; it is to prove one
 convincing vertical slice of the mental model:
 
-`messy supplier evidence -> extracted workflow state -> flow/slowdown/healthy lane signal -> surfaced intervention context -> business impact`
+`messy supplier evidence -> extracted workflow state -> chartable content-flow DAG -> protocol-bounded chart instructions -> human interpretation`
 
 Use ambiguity tolerance by deciding what not to build. Keep asking: can a COO,
-FDE, engineer, or customer success lead look at this and know where value is
-flowing, where attention is needed, and what evidence supports it?
+FDE, engineer, or customer success lead look at this and understand what content
+is flowing, which surfaces are involved, and what evidence supports the chart?
 
-Signal should show both positive and negative flow: traffic, throughput, healthy
-lanes, slowdowns, blocked handoffs, activation gaps, intervention context, and
-business meaning. Do not reduce it to only RCA for failures.
+Signal should show supplier communication as structured flow: real nodes for
+client workspaces and supplier counterparties, real links for content packets,
+and link-level metadata for status/support. Do not turn status labels into
+workflow nodes or reduce the product to RCA for failures.
 
 Prefer one believable email-native slice over a broad demo. A good slice
 starts with messy supplier emails/documents, extracts supplier/ingredient/RFP/doc
-state, shows which lanes are moving or waiting, explains the emphasis, and ties
-the next action to margin, RFP speed, audit readiness, production release,
-supplier redundancy, renewal proof, or expansion.
+state, projects that state into a structurally honest workflow map, and lets the
+protocol/agent generate validated chart data for human interpretation.
 
 ## While issue debugging
 

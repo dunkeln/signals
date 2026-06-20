@@ -39,104 +39,103 @@ export interface SignalWorkflowMapData {
   links: SignalWorkflowMapLink[];
 }
 
-const buyerRequestNodeId = "surface:client-role:procurement-lead:rfx";
-const supplierNodeId = "surface:supplier:northstar-sweeteners";
+const chartableContentNodeIds = new Set<SignalEntityInstance["nodeId"]>([
+  "price_received",
+  "moq_received",
+  "lead_time_received",
+  "incoterms_received",
+  "docs_received",
+  "rfp_response_received",
+  "coa",
+  "spec_sheet",
+  "haccp_plan",
+  "sds",
+  "supplier_questionnaire",
+  "insurance_certificate",
+  "certification",
+]);
+
+const procurementOutboundNodeId = "surface:client-role:procurement:outbound";
 
 export function buildSignalWorkflowMap(
   canonical: SignalCanonicalState,
 ): SignalWorkflowMapData {
-  const rfp = firstEntity(canonical.entities, "rfp");
-  const quoteFields = entitiesForNodes(canonical.entities, [
-    "price_received",
-    "moq_received",
-    "lead_time_received",
-  ]);
-  const qaDocuments = entitiesForNodes(canonical.entities, [
-    "coa",
-    "certification",
-  ]);
+  const rfps = entitiesForNodes(canonical.entities, ["rfp"]);
   const qaGates = entitiesForNodes(canonical.entities, ["qa_gate"]);
-  const supplier = firstPresent([
-    rfp?.supplier,
-    ...quoteFields.map((entity) => entity.supplier),
-    ...qaDocuments.map((entity) => entity.supplier),
-  ]);
+  const contentEntities = canonical.entities.filter(isChartableContentEntity);
+  const groups = groupContentEntities(contentEntities);
+  const nodes: SignalWorkflowMapNode[] = [];
+  const links: SignalWorkflowMapLink[] = [];
 
-  if (!supplier || quoteFields.length + qaDocuments.length === 0) {
+  if (groups.length === 0) {
     return { nodes: [], links: [] };
   }
 
-  const workflowId = firstPresent([
-    rfp?.workflowId,
-    ...quoteFields.map((entity) => entity.workflowId),
-    ...qaDocuments.map((entity) => entity.workflowId),
-  ]);
-  const material = firstPresent([
-    rfp?.material,
-    ...quoteFields.map((entity) => entity.material),
-    ...qaDocuments.map((entity) => entity.material),
-  ]);
-  const contentPackets = [
-    ...quoteFields.map((entity) => contentPacket(entity, "buyer")),
-    ...qaDocuments.map((entity) => contentPacket(entity, "qa", qaGates)),
-  ];
-  const nodes: SignalWorkflowMapNode[] = [
-    workSurfaceNode({
-      id: buyerRequestNodeId,
-      label: "Procurement RFx",
-      surfaceKind: "client_role",
-      entities: [rfp, ...quoteFields, ...qaDocuments],
-    }),
-    workSurfaceNode({
-      id: supplierNodeId,
-      label: supplier,
-      surfaceKind: "supplier",
-      entities: [rfp, ...quoteFields, ...qaDocuments, ...qaGates],
-    }),
-    ...contentPackets.map((packet) =>
+  for (const group of groups) {
+    const rfp = rfps.find((entity) => entity.workflowId === group.workflowId);
+    const supplierNodeId = `surface:supplier:${token(group.supplier)}`;
+    const contentPackets = group.entities.map((entity) =>
+      contentPacket(entity, ownerRoleForEntity(entity), qaGates),
+    );
+
+    nodes.push(
       workSurfaceNode({
-        id: packet.target,
-        label: packet.targetLabel,
+        id: procurementOutboundNodeId,
+        label: "Procurement",
         surfaceKind: "client_role",
-        entities: packet.entities,
+        entities: [rfp, ...group.entities],
       }),
-    ),
-  ];
-  const links: SignalWorkflowMapLink[] = [
-    workflowLink({
-      source: buyerRequestNodeId,
-      target: supplierNodeId,
-      value: contentPackets.length,
-      contentLabel: "RFP packet request",
-      contentKinds: contentPackets.map((packet) => packet.contentKind),
-      entities: [rfp, ...quoteFields, ...qaDocuments],
-      contentEntityIds: contentPackets.map((packet) => packet.entity.id),
-      status: rfp?.status,
-      ownerRole: "buyer",
-      supplier,
-      material,
-      workflowId,
-      summary:
-        "Procurement lead sends the RFP packet that frames the supplier content expected back.",
-    }),
-    ...contentPackets.map((packet) =>
+      workSurfaceNode({
+        id: supplierNodeId,
+        label: group.supplier,
+        surfaceKind: "supplier",
+        entities: [rfp, ...group.entities, ...qaGates],
+      }),
+      ...contentPackets.map((packet) =>
+        workSurfaceNode({
+          id: packet.target,
+          label: packet.targetLabel,
+          surfaceKind: "client_role",
+          entities: packet.entities,
+        }),
+      ),
+    );
+
+    links.push(
       workflowLink({
-        source: supplierNodeId,
-        target: packet.target,
-        value: 1,
-        contentLabel: packet.contentLabel,
-        contentKinds: [packet.contentKind],
-        entities: packet.entities,
-        contentEntityIds: [packet.entity.id],
-        status: packet.entity.status,
-        ownerRole: packet.ownerRole,
-        supplier,
-        material,
-        workflowId,
-        summary: packet.summary,
+        source: procurementOutboundNodeId,
+        target: supplierNodeId,
+        value: contentPackets.length,
+        contentLabel: "RFx packet request",
+        contentKinds: unique(contentPackets.map((packet) => packet.contentKind)),
+        entities: [rfp, ...group.entities],
+        contentEntityIds: contentPackets.map((packet) => packet.entity.id),
+        status: rfp?.status ?? "requested",
+        ownerRole: "buyer",
+        supplier: group.supplier,
+        material: group.material,
+        workflowId: group.workflowId,
+        summary: "Procurement sends the RFx packet to the supplier.",
       }),
-    ),
-  ].filter((link) => link.value > 0);
+      ...contentPackets.map((packet) =>
+        workflowLink({
+          source: supplierNodeId,
+          target: packet.target,
+          value: 1,
+          contentLabel: packet.contentLabel,
+          contentKinds: [packet.contentKind],
+          entities: packet.entities,
+          contentEntityIds: [packet.entity.id],
+          status: packet.entity.status,
+          ownerRole: packet.ownerRole,
+          supplier: group.supplier,
+          material: group.material,
+          workflowId: group.workflowId,
+          summary: packet.summary,
+        }),
+      ),
+    );
+  }
 
   const renderedNodeIds = new Set(
     links.flatMap((link) => [link.source, link.target]),
@@ -148,9 +147,45 @@ export function buildSignalWorkflowMap(
   };
 }
 
+function isChartableContentEntity(entity: SignalEntityInstance) {
+  return chartableContentNodeIds.has(entity.nodeId) && entity.supplier !== undefined;
+}
+
+function groupContentEntities(entities: SignalEntityInstance[]) {
+  const groups = new Map<
+    string,
+    {
+      supplier: string;
+      material?: string;
+      workflowId: string;
+      entities: SignalEntityInstance[];
+    }
+  >();
+
+  for (const entity of entities) {
+    const supplier = entity.supplier ?? "Unknown supplier";
+    const workflowId =
+      entity.workflowId ?? `workflow:${token(supplier)}:${token(entity.material ?? "material")}`;
+    const key = [supplier, entity.material ?? "", workflowId].map(token).join(":");
+    const group =
+      groups.get(key) ??
+      {
+        supplier,
+        material: entity.material,
+        workflowId,
+        entities: [],
+      };
+
+    group.entities.push(entity);
+    groups.set(key, group);
+  }
+
+  return Array.from(groups.values());
+}
+
 function contentPacket(
   entity: SignalEntityInstance,
-  ownerRole: "buyer" | "qa",
+  ownerRole: "buyer" | "qa" | "rd" | "ops",
   relatedEntities: SignalEntityInstance[] = [],
 ) {
   const label = contentLabelForEntity(entity);
@@ -169,17 +204,51 @@ function contentPacket(
   };
 }
 
-function ownerSurfaceForRole(ownerRole: "buyer" | "qa") {
+function ownerRoleForEntity(entity: SignalEntityInstance) {
+  if (entity.ownerRole === "qa" || entity.ownerRole === "rd" || entity.ownerRole === "ops") {
+    return entity.ownerRole;
+  }
+
+  if (isDocumentContentEntity(entity)) {
+    return "qa";
+  }
+
+  return "buyer";
+}
+
+function isDocumentContentEntity(entity: SignalEntityInstance) {
+  return (
+    entity.nodeId === "coa" ||
+    entity.nodeId === "certification" ||
+    entity.nodeId === "spec_sheet" ||
+    entity.nodeId === "haccp_plan" ||
+    entity.nodeId === "sds" ||
+    entity.nodeId === "supplier_questionnaire" ||
+    entity.nodeId === "insurance_certificate"
+  );
+}
+
+function ownerSurfaceForRole(ownerRole: "buyer" | "qa" | "rd" | "ops") {
   switch (ownerRole) {
     case "buyer":
       return {
         id: "surface:client-role:procurement",
-        label: "Procurement workspace",
+        label: "Procurement",
       };
     case "qa":
       return {
         id: "surface:client-role:qa",
-        label: "QA workspace",
+        label: "QA",
+      };
+    case "rd":
+      return {
+        id: "surface:client-role:rd",
+        label: "R&D",
+      };
+    case "ops":
+      return {
+        id: "surface:client-role:ops",
+        label: "Ops",
       };
   }
 }
@@ -192,8 +261,24 @@ function contentLabelForEntity(entity: SignalEntityInstance) {
       return "MOQ";
     case "lead_time_received":
       return "lead time";
+    case "incoterms_received":
+      return "incoterms";
+    case "docs_received":
+      return "docs";
+    case "rfp_response_received":
+      return "RFP response";
     case "coa":
       return "CoA";
+    case "spec_sheet":
+      return "spec sheet";
+    case "haccp_plan":
+      return "HACCP plan";
+    case "sds":
+      return "SDS";
+    case "supplier_questionnaire":
+      return "supplier questionnaire";
+    case "insurance_certificate":
+      return "insurance certificate";
     case "certification":
       return "organic certification";
     default:
@@ -209,8 +294,24 @@ function contentKindForEntity(entity: SignalEntityInstance) {
       return "moq";
     case "lead_time_received":
       return "lead_time";
+    case "incoterms_received":
+      return "incoterms";
+    case "docs_received":
+      return "docs";
+    case "rfp_response_received":
+      return "rfp_response";
     case "coa":
       return "coa";
+    case "spec_sheet":
+      return "spec_sheet";
+    case "haccp_plan":
+      return "haccp_plan";
+    case "sds":
+      return "sds";
+    case "supplier_questionnaire":
+      return "supplier_questionnaire";
+    case "insurance_certificate":
+      return "insurance_certificate";
     case "certification":
       return "certification";
     default:
@@ -311,13 +412,6 @@ function workflowLink({
   };
 }
 
-function firstEntity(
-  entities: SignalEntityInstance[],
-  nodeId: SignalEntityInstance["nodeId"],
-) {
-  return entities.find((entity) => entity.nodeId === nodeId);
-}
-
 function entitiesForNodes(
   entities: SignalEntityInstance[],
   nodeIds: SignalEntityInstance["nodeId"][],
@@ -327,18 +421,42 @@ function entitiesForNodes(
   return entities.filter((entity) => allowedNodeIds.has(entity.nodeId));
 }
 
-function firstPresent(values: Array<string | undefined>) {
-  return values.find((value) => value !== undefined);
-}
-
 function compact<Value>(values: Array<Value | undefined>) {
   return values.filter((value): value is Value => value !== undefined);
 }
 
 function uniqueNodes(nodes: SignalWorkflowMapNode[]) {
-  return Array.from(new Map(nodes.map((node) => [node.id, node])).values());
+  const merged = new Map<string, SignalWorkflowMapNode>();
+
+  for (const node of nodes) {
+    const existing = merged.get(node.id);
+
+    merged.set(
+      node.id,
+      existing
+        ? {
+            ...existing,
+            evidenceSourceIds: unique([
+              ...existing.evidenceSourceIds,
+              ...node.evidenceSourceIds,
+            ]),
+          }
+        : node,
+    );
+  }
+
+  return Array.from(merged.values());
 }
 
 function unique(values: string[]) {
   return Array.from(new Set(values));
+}
+
+function token(value: string) {
+  return (
+    value
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "") || "unknown"
+  );
 }

@@ -46,6 +46,20 @@ const fieldDomainSchema = z.object({
   omittedValueCount: z.number().int().nonnegative(),
 });
 
+const candidateReductionSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  chartKind: z.enum(["bar", "stacked_bar", "donut"]),
+  sourceDatasetIds: z.array(z.literal("workflow_map")).min(1),
+  reduction: z.object({
+    source: z.literal("workflow_map.links"),
+    groupBy: z.array(z.string().min(1)).min(1).max(2),
+    measure: z.enum(["packet_value", "packet_count"]),
+    splitBy: z.string().min(1).optional(),
+  }),
+  fit: z.string().min(1),
+});
+
 export const runtimeInputSchema = z.object({
   protocolVersion: z.literal(protocolVersion),
   request: z.object({
@@ -68,6 +82,7 @@ export const runtimeInputSchema = z.object({
       splitBy: z.array(z.string().min(1)),
       measures: z.array(z.string().min(1)),
     }),
+    candidateReductions: z.array(candidateReductionSchema).min(1),
     evidenceCatalog: z.array(runtimeEvidenceItemSchema).max(20),
     contextReduction: z.object({
       includedLinks: z.number().int().nonnegative(),
@@ -193,6 +208,7 @@ export function buildRuntimeContextPack({
         splitBy: reductionFields,
         measures: ["packet_value", "packet_count"],
       },
+      candidateReductions: buildCandidateReductions(),
       evidenceCatalog,
       contextReduction: {
         includedLinks: Math.min(links.length, activeLimits.maxLinks),
@@ -217,6 +233,99 @@ export function createChartContextTool(input: ChartContextToolInput) {
     parameters: z.object({}),
     execute: () => serializeRuntimeInput(buildRuntimeContextPack(input)),
   });
+}
+
+function buildCandidateReductions() {
+  return [
+    {
+      id: "volume_by_target",
+      title: "Packet Volume by Receiving Workspace",
+      chartKind: "stacked_bar",
+      sourceDatasetIds: ["workflow_map"],
+      reduction: {
+        source: "workflow_map.links",
+        groupBy: ["target.label"],
+        measure: "packet_value",
+        splitBy: "status",
+      },
+      fit: "Compare content packet volume by the client workspace or counterparty receiving it.",
+    },
+    {
+      id: "count_by_target",
+      title: "Packet Count by Receiving Workspace",
+      chartKind: "bar",
+      sourceDatasetIds: ["workflow_map"],
+      reduction: {
+        source: "workflow_map.links",
+        groupBy: ["target.label"],
+        measure: "packet_count",
+      },
+      fit: "Count distinct supplier-content links by receiving workspace or counterparty.",
+    },
+    {
+      id: "composition_by_content",
+      title: "Packet Volume Composition by Content",
+      chartKind: "donut",
+      sourceDatasetIds: ["workflow_map"],
+      reduction: {
+        source: "workflow_map.links",
+        groupBy: ["contentLabel"],
+        measure: "packet_value",
+      },
+      fit: "Show supplier content packet volume as a composition by content label.",
+    },
+    {
+      id: "volume_by_content",
+      title: "Packet Volume by Content",
+      chartKind: "stacked_bar",
+      sourceDatasetIds: ["workflow_map"],
+      reduction: {
+        source: "workflow_map.links",
+        groupBy: ["contentLabel"],
+        measure: "packet_value",
+        splitBy: "status",
+      },
+      fit: "Compare RFx, quote, document, and certification packet volume without merging content kinds.",
+    },
+    {
+      id: "support_by_content_kind",
+      title: "Packet Support by Content Kind",
+      chartKind: "stacked_bar",
+      sourceDatasetIds: ["workflow_map"],
+      reduction: {
+        source: "workflow_map.links",
+        groupBy: ["contentKind"],
+        measure: "packet_count",
+        splitBy: "support",
+      },
+      fit: "Show which content kinds are strongly or partially supported by evidence.",
+    },
+    {
+      id: "volume_by_owner",
+      title: "Packet Volume by Owner Role",
+      chartKind: "stacked_bar",
+      sourceDatasetIds: ["workflow_map"],
+      reduction: {
+        source: "workflow_map.links",
+        groupBy: ["ownerRole"],
+        measure: "packet_value",
+        splitBy: "status",
+      },
+      fit: "Compare packet volume by surfaced owner or review role.",
+    },
+  ] satisfies Array<{
+    id: string;
+    title: string;
+    chartKind: ChartInstruction["chartKind"];
+    sourceDatasetIds: ["workflow_map"];
+    reduction: {
+      source: ChartInstruction["reduction"]["source"];
+      groupBy: ChartInstruction["reduction"]["groupBy"];
+      measure: ChartInstruction["reduction"]["measure"];
+      splitBy?: ChartInstruction["reduction"]["splitBy"];
+    };
+    fit: string;
+  }>;
 }
 
 function compactRuntimeLink(

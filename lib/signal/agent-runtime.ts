@@ -7,7 +7,6 @@ import {
   buildChartProtocolState,
   chartInstructionSchema,
   createChartContextTool,
-  detectUnsupportedChartRequest,
   parseChartInstruction,
   type ChartContextToolInput,
   type ChartRuntimeResult,
@@ -32,12 +31,6 @@ export async function runSignalAgent({
   fixtureRoute,
   message,
 }: SignalAgentRuntimeInput): Promise<SignalAgentRuntimeResponse> {
-  const unsupportedRequest = detectUnsupportedChartRequest(message);
-
-  if (unsupportedRequest) {
-    return unsupportedRequest;
-  }
-
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("Signal agent runtime requires OPENAI_API_KEY.");
   }

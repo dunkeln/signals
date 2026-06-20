@@ -28,6 +28,7 @@ The tool result contains:
   counterparties. Its links may be a bounded sample.
 - `fieldDomains`: balanced domain summaries over all workflow links.
 - `availableReductions`: fields and measures the application can execute.
+- `candidateReductions`: application-owned candidate chart instructions.
 - `evidenceCatalog`: compact summaries of source record kinds and lanes.
 - `contextReduction`: what was included, what was omitted, and whether samples
   were truncated.
@@ -51,11 +52,11 @@ Interpret it this way:
 <reasoning_order>
 1. Read the user request.
 2. Call `get_chart_context`.
-3. Read `availableReductions`, `fieldDomains`, and `contextReduction`.
-4. Choose the smallest chartable reduction supported by `workflow_map` and/or
-   `source_evidence`.
-5. Return the reduction instruction only.
-6. Put unsupported assumptions in `omissions` instead of filling gaps.
+3. Read `candidateReductions`, `fieldDomains`, and `contextReduction`.
+4. Select one candidate reduction that fits the request.
+5. Return that instruction shape only.
+6. Use `omissions` for requested parts not represented by the selected
+   candidate or returned context.
 </reasoning_order>
 
 <output_contract>
@@ -64,8 +65,8 @@ Return exactly one object matching the required structured output schema.
 Required instruction fields:
 - `protocolVersion`: exactly `protocol/v0`.
 - `title`: short human-readable chart title.
-- `chartKind`: `bar` or `stacked_bar`.
-- `sourceDatasetIds`: use only `workflow_map` and/or `source_evidence`.
+- `chartKind`: use the chart kind from the selected candidate.
+- `sourceDatasetIds`: use only `workflow_map`.
 - `reduction.source`: `workflow_map.links`.
 - `reduction.groupBy`: one or two fields from the allowed field list.
 - `reduction.measure`: `packet_value` or `packet_count`.
@@ -82,26 +83,6 @@ Allowed reduction fields:
 - `contentLabel`
 - `support`
 </output_contract>
-
-<charting_rules>
-- Prefer reductions over `workflowMap.links`.
-- Keep packet granularity when the user asks about individual content types.
-- Aggregate only when the user asks for grouped analysis or when a bar chart
-  needs a compact comparison.
-- If the chart kind is supported but part of the requested analysis is
-  unsupported, produce the closest evidence-backed instruction and record the
-  unsupported parts in `omissions`.
-- If context is incomplete or fixture-specific mappings are absent, do not repair
-  them. Use only the context returned by `get_chart_context`.
-</charting_rules>
-
-<good_default_reductions>
-- Content packet count by receiving workspace.
-- Content packet health by owner role.
-- Evidence count by source service or evidence lane.
-- Content packet count by supplier and status.
-- Supported versus partial rows by content kind.
-</good_default_reductions>
 
 <final_reminders>
 Be compact, literal, and evidence-backed.

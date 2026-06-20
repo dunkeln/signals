@@ -128,6 +128,49 @@
     }
 }
 
+@layer components {
+  .semiotic-signal-chart {
+    --semiotic-bg: var(--background);
+    --semiotic-text: var(--foreground);
+    --semiotic-text-secondary: var(--muted-foreground);
+    --semiotic-grid: var(--border);
+    --semiotic-border: var(--border);
+    --semiotic-primary: var(--foreground);
+    --semiotic-secondary: var(--muted-foreground);
+    --semiotic-surface: var(--background);
+    --semiotic-tooltip-bg: var(--popover);
+    --semiotic-tooltip-text: var(--popover-foreground);
+    --semiotic-tooltip-radius: 8px;
+    --semiotic-tooltip-shadow: 0 12px 30px rgb(0 0 0 / 0.08);
+    --semiotic-font-family: var(--font-sans);
+    --semiotic-tick-font-size: 11px;
+    --semiotic-axis-label-font-size: 11px;
+  }
+
+  .semiotic-signal-chart svg text,
+  .semiotic-signal-chart canvas + svg text {
+    fill: var(--muted-foreground);
+    font-family: var(--font-sans);
+    letter-spacing: 0;
+  }
+
+  .semiotic-signal-chart .stream-network-tooltip {
+    border: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+  }
+
+  .semiotic-signal-chart .semiotic-tooltip {
+    border: 1px solid var(--border) !important;
+    border-radius: 2px !important;
+    background: var(--background) !important;
+    color: var(--foreground) !important;
+    box-shadow: 0 8px 18px rgb(0 0 0 / 0.06) !important;
+    padding: 6px 9px !important;
+  }
+}
+
 /* DEBUG CSS: temporary layout-orientation outlines. Remove after layout settles. */
 @layer utilities {
   .debug-page {

@@ -22,7 +22,7 @@ export const protocolDatasetIdSchema = z.enum([
   "source_evidence",
   "canonical_entities",
   "workflow_map",
-  "generated_content_state_by_owner",
+  "generated_chart",
 ]);
 
 export const chartIntentSchema = z.object({
@@ -88,12 +88,12 @@ const datasets: ProtocolDataset[] = [
     evidenceDataset: "source_evidence",
   },
   {
-    id: "generated_content_state_by_owner",
+    id: "generated_chart",
     statePath: "/generatedChartData",
     sourceLayer: "generated_chart_data",
     allowedComponents: ["GeneratedBarChart"],
     purpose:
-      "Render the validated generated dataset that groups supplier content-packet evidence state by owner role.",
+      "Render the validated generated chart dataset built from an agent instruction.",
     evidenceDataset: "source_evidence",
   },
 ];
@@ -128,7 +128,7 @@ export function buildChartProtocolState(): ChartProtocolState {
 export function buildDefaultChartIntents(): ChartIntent[] {
   return [
     {
-      id: "workflow-map-sankey",
+      id: "workflow_map",
       component: "WorkflowMapSankey",
       dataset: "workflow_map",
       title: "Supplier Content Flow",
@@ -137,9 +137,9 @@ export function buildDefaultChartIntents(): ChartIntent[] {
       evidenceDataset: "source_evidence",
     },
     {
-      id: "generated-chart",
+      id: "generated_chart",
       component: "GeneratedBarChart",
-      dataset: "generated_content_state_by_owner",
+      dataset: "generated_chart",
       title: "Generated Chart",
       rationale:
         "Render the latest validated chart dataset built from an agent instruction.",

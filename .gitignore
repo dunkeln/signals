@@ -44,6 +44,9 @@ next-env.d.ts
 .codex/memories/
 .agents/
 
+# local fixtures
+/lib/fixtures/
+
 # markdown docs
 *.md
 !/README.md

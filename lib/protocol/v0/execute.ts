@@ -57,7 +57,7 @@ export function executeChartInstruction({
       : valueLabel(instruction.reduction.measure);
     const measureValue =
       instruction.reduction.measure === "packet_value" ? link.value : 1;
-    const rowId = rowSegments.map(slugify).join(":");
+    const rowId = rowSegments.map(protocolToken).join(":");
     const row =
       rowsByKey.get(rowId) ??
       emptyInstructionRow(rowId, rowSegments, instruction);
@@ -187,16 +187,16 @@ function derivedDatasetId(instruction: ChartInstruction) {
     instruction.reduction.splitBy,
   ]
     .filter(Boolean)
-    .map((part) => slugify(String(part)))
+    .map((part) => protocolToken(String(part)))
     .join(":")}`;
 }
 
-function slugify(value: string) {
+function protocolToken(value: string) {
   return (
     value
       .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-|-$/g, "") || "row"
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_|_$/g, "") || "row"
   );
 }
 

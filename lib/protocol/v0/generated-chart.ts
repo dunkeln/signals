@@ -14,6 +14,7 @@ import { protocolDatasetIdSchema } from "@/lib/protocol/v0/chart-intent";
 const generatedChartKindSchema = z.enum([
   "bar",
   "stacked_bar",
+  "donut",
   "line",
   "sankey",
   "table",
@@ -58,11 +59,7 @@ export const generatedChartDatasetSchema = z
     const rowIds = new Set<string>();
     const datasetEvidence = new Set(dataset.evidenceSourceIds);
 
-    if (
-      dataset.sourceDatasetIds.includes(
-        "generated_content_state_by_owner",
-      )
-    ) {
+    if (dataset.sourceDatasetIds.includes("generated_chart")) {
       context.addIssue({
         code: "custom",
         message: "Generated datasets cannot cite generated render datasets as source inputs.",
