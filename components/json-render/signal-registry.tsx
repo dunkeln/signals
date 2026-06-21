@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { defineRegistry, useStateValue } from "@json-render/react";
-import { InfoIcon } from "lucide-react";
+import { InfoIcon, LoaderCircleIcon } from "lucide-react";
 import { SankeyDiagram } from "semiotic/network";
 import { BarChart, DonutChart, StackedBarChart } from "semiotic/ordinal";
 
@@ -43,6 +43,7 @@ const TimeSliceContext = React.createContext<string>("all");
 const { registry: signalRegistry } = defineRegistry(signalCatalog, {
   components: {
     Frame: ({ props, children }) => {
+      const client = useStateValue<{ slug: string } | undefined>("/client");
       const workflowMap = useStateValue<SignalWorkflowMapData | undefined>("/workflowMap");
       const options = React.useMemo(
         () => buildTimeSliceOptions(workflowMap?.links ?? []),
@@ -57,7 +58,11 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
       }, [options, selectedSlice]);
 
       return (
-        <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 pb-8">
+        <div
+          className={`mx-auto flex w-full flex-col gap-7 pb-8 ${
+            client ? "max-w-4xl" : "max-w-none"
+          }`}
+        >
           <div>
             <h1 className="inline-flex items-start gap-1.5 text-xl font-semibold text-foreground">
               <span>{props.title}</span>
@@ -166,7 +171,7 @@ export function GeneratedChartView({
 }) {
   const measureKeys = measureKeysForDataset(dataset);
   const rows = dataset.rows.map((row) => ({
-    label: row.label,
+    label: displayChartLabel(row.label),
     value: row.measures[measureKeys[0] ?? ""] ?? 0,
     ...Object.fromEntries(
       measureKeys.map((key) => [key, row.measures[key] ?? 0]),
@@ -174,7 +179,7 @@ export function GeneratedChartView({
   }));
   const stackedRows = dataset.rows.flatMap((row) =>
     measureKeys.map((key) => ({
-      label: row.label,
+      label: displayChartLabel(row.label),
       measure: key,
       value: row.measures[key] ?? 0,
     })),
@@ -477,42 +482,57 @@ function ChartPlaceholder() {
 }
 
 function SemioticWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
+  const streaming = useStateValue<boolean | undefined>("/workflowMapStreaming");
+
   if (data.nodes.length === 0 || data.links.length === 0) {
     return (
       <div className="flex h-80 items-center justify-center text-sm text-muted-foreground">
-      No workflow links available.
+        {streaming ? (
+          <span className="inline-flex items-center gap-2">
+            <LoaderCircleIcon className="size-4 animate-spin" />
+            Ingesting telemetry
+          </span>
+        ) : (
+          "No workflow links available."
+        )}
       </div>
     );
   }
 
-  const edges = data.links.map((link, index) => ({
-    ...link,
-    edgeId: `${link.source}:${link.target}:${link.contentLabel}:${index}`,
-  }));
+  const projected = projectWorkflowMapForSankey(data);
+  const height = sankeyHeightFor(data);
+  const layout = sankeyLayoutFor(data);
 
   return (
     <div
       className="overflow-x-auto overflow-y-visible"
-      style={{ minHeight: workflowMapSankeySize.height }}
+      style={{ minHeight: height }}
     >
       <SankeyDiagram
-        nodes={data.nodes}
-        edges={edges}
-        width={workflowMapSankeySize.width}
-        height={workflowMapSankeySize.height}
-        margin={{ top: 26, right: 148, bottom: 0, left: 116 }}
+        nodes={projected.nodes}
+        edges={projected.links}
+        width={layout.width}
+        height={height}
+        margin={layout.margin}
         nodeIdAccessor="id"
         sourceAccessor="source"
         targetAccessor="target"
         valueAccessor="value"
         nodeLabel="label"
         showLabels
+        nodeAlign="left"
         nodeWidth={7}
         nodePaddingRatio={0.34}
         edgeOpacity={0.48}
+        edgeSort={(left, right) =>
+          Date.parse(left.observedAt) - Date.parse(right.observedAt) ||
+          left.contentLabel.localeCompare(right.contentLabel)
+        }
         enableHover
         accessibleTable={false}
-        edgeColorBy={(edge) => workflowStatusColor(edge.status)}
+        edgeColorBy={(edge) =>
+          workflowRouteColor(dataFromSemioticWrapper<ProjectedSankeyLink>(edge))
+        }
         frameProps={{
           edgeIdAccessor: "edgeId",
           animate: { intro: false },
@@ -525,23 +545,25 @@ function SemioticWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
             lineWidth: 1,
           }),
           edgeStyle: (edge) => {
-            const link = dataFromSemioticWrapper<SignalWorkflowMapLink>(edge);
+            const link = dataFromSemioticWrapper<ProjectedSankeyLink>(edge);
+            const color = workflowRouteColor(link);
 
             return {
-              stroke: workflowStatusColor(link.status),
-              fill: workflowStatusColor(link.status),
+              stroke: color,
+              fill: color,
               opacity: link.support === "partial" ? 0.28 : 0.48,
             };
           },
         }}
         tooltip={(datum) => {
           const item = dataFromSemioticWrapper<
-            Partial<SignalWorkflowMapLink & SignalWorkflowMapNode>
+            Partial<SignalWorkflowMapLink & ProjectedSankeyNode>
           >(datum);
+          const nodeId = item.originalId ?? item.id;
           const blockedLinks =
-            "id" in item
+            nodeId
               ? data.links.filter(
-                  (link) => link.target === item.id && link.status === "blocked",
+                  (link) => link.target === nodeId && link.status === "blocked",
                 )
               : [];
           const edge = item as Partial<SignalWorkflowMapLink>;
@@ -572,6 +594,189 @@ function SemioticWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
   );
 }
 
+type ProjectedSankeyNode = SignalWorkflowMapNode & {
+  originalId: string;
+};
+
+type ProjectedSankeyLink = SignalWorkflowMapLink & {
+  edgeId: string;
+  routeKind: "loop" | "redirection" | "error";
+};
+
+function projectWorkflowMapForSankey(data: SignalWorkflowMapData) {
+  const sourceNodes = new Map(data.nodes.map((node) => [node.id, node]));
+  const supplierOriginRoles = supplierOriginRolesFor(data, sourceNodes);
+  const nodes = new Map<string, ProjectedSankeyNode>();
+  const links = data.links.flatMap((link, index) => {
+    const source = sourceNodes.get(link.source);
+    const target = sourceNodes.get(link.target);
+    const projectedSource = projectedNodeId(source, link.source, "source");
+    const projectedTarget = projectedNodeId(target, link.target, "target");
+    const routeKind = routeKindForLink(link, source, target, supplierOriginRoles);
+
+    upsertProjectedNode(nodes, source, projectedSource);
+
+    upsertProjectedNode(nodes, target, projectedTarget);
+
+    return [
+      projectedLink(link, projectedSource, projectedTarget, routeKind, index),
+    ];
+  });
+
+  return {
+    nodes: Array.from(nodes.values()),
+    links,
+  };
+}
+
+function projectedLink(
+  link: SignalWorkflowMapLink,
+  source: string,
+  target: string,
+  routeKind: ProjectedSankeyLink["routeKind"],
+  index: number,
+  suffix = "flow",
+) {
+    return {
+      ...link,
+      source,
+      target,
+      routeKind,
+      edgeId: `${source}:${target}:${link.contentLabel}:${index}:${suffix}`,
+    };
+}
+
+function projectedNodeId(
+  node: SignalWorkflowMapNode | undefined,
+  fallbackId: string,
+  side: "source" | "target",
+) {
+  if (node?.surfaceKind === "supplier") {
+    return node.id;
+  }
+
+  return `${side === "source" ? "origin" : "receiving"}:${fallbackId}`;
+}
+
+function upsertProjectedNode(
+  nodes: Map<string, ProjectedSankeyNode>,
+  node: SignalWorkflowMapNode | undefined,
+  id: string,
+) {
+  if (!node || nodes.has(id)) {
+    return;
+  }
+
+  nodes.set(id, {
+    ...node,
+    id,
+    originalId: node.id,
+    label: node.surfaceKind === "client_role" ? clientRoleLabel(node) : node.label,
+  });
+}
+
+function clientRoleLabel(node: SignalWorkflowMapNode) {
+  const suffix = clientPathSuffix(node.id);
+
+  if (node.id.includes(":procurement")) return `Procurement${suffix}`;
+  if (node.id.includes(":qa")) return `QA${suffix}`;
+  if (node.id.includes(":rd")) return `R&D${suffix}`;
+  if (node.id.includes(":ops")) return `Ops${suffix}`;
+
+  return node.label;
+}
+
+function clientPathSuffix(nodeId: string) {
+  const surfaceIndex = nodeId.indexOf(":surface:");
+
+  return surfaceIndex > 0 ? `@${nodeId.slice(0, surfaceIndex)}` : "";
+}
+
+function supplierOriginRolesFor(
+  data: SignalWorkflowMapData,
+  nodes: Map<string, SignalWorkflowMapNode>,
+) {
+  const roles = new Map<string, Set<string>>();
+
+  for (const link of data.links) {
+    const source = nodes.get(link.source);
+    const target = nodes.get(link.target);
+
+    if (source?.surfaceKind !== "client_role" || target?.surfaceKind !== "supplier") {
+      continue;
+    }
+
+    const sourceRole = clientRoleKey(source);
+
+    if (!sourceRole) continue;
+
+    const supplierRoles = roles.get(target.id) ?? new Set<string>();
+    supplierRoles.add(sourceRole);
+    roles.set(target.id, supplierRoles);
+  }
+
+  return roles;
+}
+
+function routeKindForLink(
+  link: SignalWorkflowMapLink,
+  source: SignalWorkflowMapNode | undefined,
+  target: SignalWorkflowMapNode | undefined,
+  supplierOriginRoles: Map<string, Set<string>>,
+): ProjectedSankeyLink["routeKind"] {
+  if (link.status === "blocked") return "error";
+
+  if (source?.surfaceKind === "client_role" && target?.surfaceKind === "client_role") {
+    return "redirection";
+  }
+
+  if (source?.surfaceKind !== "supplier" || target?.surfaceKind !== "client_role") {
+    return "loop";
+  }
+
+  const targetRole = clientRoleKey(target);
+  const originRoles = supplierOriginRoles.get(source.id);
+
+  return targetRole && originRoles && !originRoles.has(targetRole)
+    ? "redirection"
+    : "loop";
+}
+
+function clientRoleKey(node: SignalWorkflowMapNode) {
+  if (node.id.includes(":procurement")) return "procurement";
+  if (node.id.includes(":qa")) return "qa";
+  if (node.id.includes(":rd")) return "rd";
+  if (node.id.includes(":ops")) return "ops";
+}
+
+function sankeyHeightFor(data: SignalWorkflowMapData) {
+  const size = Math.max(data.links.length, data.nodes.length);
+
+  if (size <= 3) return 180;
+  if (size <= 6) return 260;
+  if (size > 28) return 520;
+  if (size > 18) return 440;
+
+  return workflowMapSankeySize.height;
+}
+
+function sankeyLayoutFor(data: SignalWorkflowMapData) {
+  const hasScopedClientLabels = data.nodes.some(
+    (node) =>
+      node.surfaceKind === "client_role" && node.id.indexOf(":surface:") > 0,
+  );
+
+  return hasScopedClientLabels
+    ? {
+        width: 960,
+        margin: { top: 26, right: 250, bottom: 0, left: 250 },
+      }
+    : {
+        width: workflowMapSankeySize.width,
+        margin: { top: 26, right: 130, bottom: 0, left: 170 },
+      };
+}
+
 function blockingReason(link: SignalWorkflowMapLink) {
   const reason =
     stringAttribute(link.attributes.blocked_by) ??
@@ -581,18 +786,14 @@ function blockingReason(link: SignalWorkflowMapLink) {
   return reason?.replaceAll("_", " ");
 }
 
-function workflowStatusColor(status?: SignalWorkflowMapLink["status"]) {
-  switch (status) {
-    case "blocked":
+function workflowRouteColor(link: Pick<ProjectedSankeyLink, "routeKind">) {
+  switch (link.routeKind) {
+    case "error":
       return "var(--destructive)";
-    case "review_required":
-      return "var(--muted-foreground)";
-    case "received":
-      return "var(--chart-2)";
-    case "requested":
-      return "var(--foreground)";
-    default:
-      return "var(--border)";
+    case "redirection":
+      return "oklch(0.72 0 0)";
+    case "loop":
+      return "oklch(0.48 0 0)";
   }
 }
 
@@ -622,16 +823,28 @@ function useChartData<Value>(props: DataPathProps): Value {
 }
 
 const generatedBarColors = [
-  "var(--foreground)",
-  "var(--muted-foreground)",
-  "var(--border)",
-  "var(--muted)",
+  "oklch(0.18 0 0)",
+  "oklch(0.42 0 0)",
+  "oklch(0.62 0 0)",
+  "oklch(0.78 0 0)",
 ];
 
 function generatedBarColor(key: string) {
   const hash = Array.from(key).reduce((total, char) => total + char.charCodeAt(0), 0);
 
   return generatedBarColors[hash % generatedBarColors.length];
+}
+
+function displayChartLabel(label: string) {
+  return (
+    {
+      M: "Mon",
+      T: "Tue",
+      W: "Wed",
+      Th: "Thu",
+      F: "Fri",
+    }[label] ?? label
+  );
 }
 
 function measureKeysForDataset(dataset: GeneratedChartDataset) {

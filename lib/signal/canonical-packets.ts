@@ -23,6 +23,10 @@ const contentMetadata: Partial<
   rfp_response_received: { label: "RFP response", kind: "rfp_response" },
   coa: { label: "CoA", kind: "coa" },
   spec_sheet: { label: "spec sheet", kind: "spec_sheet" },
+  allergen_statement: {
+    label: "allergen statement",
+    kind: "allergen_statement",
+  },
   haccp_plan: { label: "HACCP plan", kind: "haccp_plan" },
   sds: { label: "SDS", kind: "sds" },
   supplier_questionnaire: {
@@ -33,7 +37,13 @@ const contentMetadata: Partial<
     label: "insurance certificate",
     kind: "insurance_certificate",
   },
-  certification: { label: "organic certification", kind: "certification" },
+  certification: { label: "certification", kind: "certification" },
+  traceability_document: {
+    label: "traceability document",
+    kind: "traceability_document",
+  },
+  bol: { label: "BOL", kind: "bol" },
+  lot_coa: { label: "lot document", kind: "lot_document" },
 };
 
 const renderableContentNodeIds = new Set<SignalWorkflowNodeId>(
@@ -120,11 +130,12 @@ function buildAdmittedPackets(
     for (const entity of group.entities) {
       const ownerRole = ownerRoleForEntity(entity);
       const targetSurface = ownerSurfaceForRole(ownerRole);
+      const sourceSurface = sourceSurfaceForEntity(entity, records, supplierSurface);
       const label = contentLabelForEntity(entity);
 
       packets.push({
         id: `packet:${entity.id}`,
-        source: supplierSurface,
+        source: sourceSurface,
         target: targetSurface,
         value: 1,
         flowUnit: "content_packet",
@@ -290,6 +301,31 @@ function ownerRoleForEntity(entity: SignalEntityInstance) {
   return "buyer";
 }
 
+function sourceSurfaceForEntity(
+  entity: SignalEntityInstance,
+  records: SourceRecord[],
+  defaultSurface: SignalWorkSurface,
+) {
+  const attributes = attributesForSourceIds(records, entity.evidenceSourceIds);
+  const fromRole = roleFromAttribute(attributes.from_role);
+
+  return fromRole ? ownerSurfaceForRole(fromRole) : defaultSurface;
+}
+
+function roleFromAttribute(value: JsonValue | undefined) {
+  const role = Array.isArray(value) ? value.find((entry) => typeof entry === "string") : value;
+
+  if (role === "buyer" || role === "qa" || role === "rd" || role === "ops") {
+    return role;
+  }
+
+  if (role === "procurement") {
+    return "buyer";
+  }
+
+  return undefined;
+}
+
 function isDocumentContentEntity(entity: SignalEntityInstance) {
   return (
     entity.nodeId === "coa" ||
@@ -340,6 +376,12 @@ function supplierSurfaceFor(supplier: string): SignalWorkSurface {
 }
 
 function contentLabelForEntity(entity: SignalEntityInstance) {
+  if (entity.nodeId === "certification" && entity.payload.kind === "document") {
+    return entity.payload.certificateType
+      ? `${entity.payload.certificateType} certification`
+      : "certification";
+  }
+
   return contentMetadata[entity.nodeId]?.label ?? entity.nodeId.replaceAll("_", " ");
 }
 

@@ -26,13 +26,17 @@ export type {
 export function buildSignalCanonicalState(
   ingress: AcmeBaseSandbox,
 ): SignalCanonicalState {
-  const records = collectSourceRecords(ingress);
+  const records = collectSourceRecords(ingress).filter(isCanonicalCompatibleRecord);
   const entities = buildEntityInstances(records);
 
   return {
     entities,
     packetSets: buildPacketSetState(entities, records),
   };
+}
+
+function isCanonicalCompatibleRecord(record: SourceRecord) {
+  return Boolean(supplierForRecord(record)) && hasProcurementSignal(record);
 }
 
 type ContentTarget =
@@ -45,11 +49,15 @@ type ContentTarget =
 type DocumentTarget =
   | "coa"
   | "spec_sheet"
+  | "allergen_statement"
   | "haccp_plan"
   | "sds"
   | "supplier_questionnaire"
   | "insurance_certificate"
-  | "certification";
+  | "certification"
+  | "traceability_document"
+  | "bol"
+  | "lot_coa";
 type ClusterRecord = {
   key: string;
   supplier: string;
@@ -111,6 +119,11 @@ const documentTargets: Array<{
     documentType: "SpecSheet",
     aliases: ["spec_sheet", "specification", "spec"],
   },
+  {
+    nodeId: "allergen_statement",
+    documentType: "AllergenStatement",
+    aliases: ["allergen_statement", "allergen_cross_contact_statement"],
+  },
   { nodeId: "haccp_plan", documentType: "HACCP", aliases: ["haccp", "haccp_plan"] },
   { nodeId: "sds", documentType: "SDS", aliases: ["sds", "safety_data_sheet"] },
   {
@@ -123,6 +136,13 @@ const documentTargets: Array<{
     documentType: "InsuranceCertificate",
     aliases: ["insurance_certificate", "insurance"],
   },
+  {
+    nodeId: "traceability_document",
+    documentType: "TraceabilityDocument",
+    aliases: ["traceability_document", "traceability", "lot_traceability"],
+  },
+  { nodeId: "bol", documentType: "BOL", aliases: ["bol", "bill_of_lading"] },
+  { nodeId: "lot_coa", documentType: "LotCoA", aliases: ["lot_coa", "lot_number"] },
 ];
 
 export function buildEntityInstances(records: SourceRecord[]): SignalEntityInstance[] {
@@ -452,7 +472,7 @@ function buildSourcingFieldEntities(
         supplier: cluster.supplier,
         material: cluster.material,
         workflowId,
-        ownerRole: "buyer",
+        ownerRole: ownerRoleForRecords(fieldRecords, "buyer"),
         status,
         summary: `${fieldTarget.field} content is present in supplier evidence for ${cluster.supplier}.`,
       });
@@ -480,6 +500,7 @@ function buildDocumentEntities(
 
     const sourceIds = recordIds(documentRecords);
     const status = statusForRecords(documentRecords);
+    const ownerRole = ownerRoleForRecords(documentRecords, "qa");
     const documentId =
       firstPresent(documentRecords.map((record) => firstAttribute(record, [
         "document_id",
@@ -526,9 +547,7 @@ function buildDocumentEntities(
               firstAttribute(record, ["expiration_date", "cert.expiration_date"]),
             ),
           ),
-          certificateType: firstPresent(
-            documentRecords.map((record) => firstAttribute(record, ["certificate_type"])),
-          ),
+          certificateType: certificateTypeForRecords(documentRecords),
           lowConfidenceFields: unique(
             documentRecords.flatMap((record) =>
               attributeStrings(record, ["low_confidence_fields"]),
@@ -541,7 +560,7 @@ function buildDocumentEntities(
         supplier: cluster.supplier,
         material: cluster.material,
         workflowId,
-        ownerRole: "qa",
+        ownerRole,
         status,
         summary: `${target.documentType} content is present in supplier evidence for ${cluster.supplier}.`,
       }),
@@ -573,7 +592,7 @@ function buildDocumentEntities(
           supplier: cluster.supplier,
           material: cluster.material,
           workflowId,
-          ownerRole: "qa",
+          ownerRole,
           status,
           summary: `${target.documentType} has QA-facing status metadata in source evidence.`,
         }),
@@ -853,6 +872,49 @@ function supportForRecords(records: SourceRecord[]): SignalEvidenceSupport {
   )
     ? "partial"
     : "strong";
+}
+
+function ownerRoleForRecords(
+  records: SourceRecord[],
+  fallback: "buyer" | "qa" | "rd" | "ops",
+) {
+  for (const record of records) {
+    const role = firstAttribute(record, ["owner_role", "to_role", "recipient_role"]);
+
+    if (role === "buyer" || role === "qa" || role === "rd" || role === "ops") {
+      return role;
+    }
+
+    if (role === "procurement") {
+      return "buyer";
+    }
+  }
+
+  return fallback;
+}
+
+function certificateTypeForRecords(records: SourceRecord[]) {
+  const explicit = firstPresent(
+    records.map((record) =>
+      firstAttribute(record, ["certificate_type", "cert_type", "cert.type"]),
+    ),
+  );
+
+  if (explicit) {
+    return explicit.replaceAll("_", " ");
+  }
+
+  const guessed = firstPresent(
+    records.map((record) =>
+      firstAttribute(record, ["document_type_guess", "document.type_guess"]),
+    ),
+  );
+
+  if (guessed?.endsWith("_certification")) {
+    return guessed.replace(/_certification$/, "").replaceAll("_", " ");
+  }
+
+  return undefined;
 }
 
 function firstPresent(values: Array<string | undefined>) {

@@ -147,6 +147,10 @@
     --semiotic-axis-label-font-size: 11px;
   }
 
+  .semiotic-signal-chart svg {
+    overflow: visible;
+  }
+
   .semiotic-signal-chart svg text,
   .semiotic-signal-chart canvas + svg text {
     fill: var(--foreground) !important;

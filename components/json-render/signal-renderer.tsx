@@ -24,6 +24,7 @@ export function SignalRenderer({ spec, state }: SignalRendererProps) {
         key={state.client.slug}
         clientSlug={state.client.slug}
         initialBlocks={state.document.blocks}
+        replayFrames={state.replayFrames}
         workflowSpec={spec}
       />
     </JSONUIProvider>

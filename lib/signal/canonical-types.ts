@@ -86,11 +86,13 @@ export type SignalWorkflowNodeId =
   | "rfp_response_received"
   | "coa"
   | "spec_sheet"
+  | "allergen_statement"
   | "haccp_plan"
   | "sds"
   | "supplier_questionnaire"
   | "insurance_certificate"
   | "certification"
+  | "traceability_document"
   | "qa_gate"
   | "system_entry"
   | "purchase_order"
@@ -156,4 +158,3 @@ type SignalEntityPayload =
   | {
       kind: "empty_future_node";
     };
-

@@ -25,9 +25,13 @@ import remarkGfm from "remark-gfm";
 import {
   ArrowUpIcon,
   DownloadIcon,
+  ExternalLinkIcon,
   GripVerticalIcon,
   LoaderCircleIcon,
+  PauseIcon,
   PlusIcon,
+  PlayIcon,
+  RefreshCwIcon,
   RotateCcwIcon,
   SparklesIcon,
   Trash2Icon,
@@ -38,6 +42,10 @@ import {
   signalRegistry,
 } from "@/components/json-render/signal-registry";
 import {
+  setSignalSimulationRunning,
+  useSignalSimulationRunning,
+} from "@/components/signal-simulation-state";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -45,6 +53,7 @@ import {
 import { executeChartInstruction } from "@/lib/protocol/v0";
 import { submitSignalPrompt } from "@/lib/signal/agent-client";
 import type { SignalIntelligenceState } from "@/lib/signal/intelligence";
+import type { SignalReplayFrame } from "@/lib/signal/page-state";
 import {
   fileToken,
   reportMarkdown,
@@ -58,12 +67,14 @@ type SignalBlock = ReportBlock;
 interface SignalBlockCanvasProps {
   clientSlug: string;
   initialBlocks: SignalBlock[];
+  replayFrames: SignalReplayFrame[];
   workflowSpec: Spec;
 }
 
 export function SignalBlockCanvas({
   clientSlug,
   initialBlocks,
+  replayFrames,
   workflowSpec,
 }: SignalBlockCanvasProps) {
   const { set } = useStateStore();
@@ -72,6 +83,10 @@ export function SignalBlockCanvas({
   const workflowMap = useStateValue<SignalWorkflowMapData | undefined>("/workflowMap");
   const [blocks, setBlocks] = React.useState<SignalBlock[]>(initialBlocks);
   const [runningBlockId, setRunningBlockId] = React.useState<string | null>(null);
+  const [replayFrameIndex, setReplayFrameIndex] = React.useState(
+    replayFrames.length - 1,
+  );
+  const simulationRunning = useSignalSimulationRunning(clientSlug);
   const nextNoteId = React.useRef(nextNoteIndex(initialBlocks));
   const documentTitleStorageKey = `signal:document-title:${clientSlug}`;
   const sensors = useSensors(
@@ -173,6 +188,65 @@ export function SignalBlockCanvas({
     URL.revokeObjectURL(url);
   }
 
+  const applyReplayFrame = React.useCallback(
+    (index: number) => {
+      const frame = replayFrames[index];
+
+      if (!frame) {
+        return;
+      }
+
+      set("/signal", frame.signal);
+      set("/workflowMap", frame.workflowMap);
+      setReplayFrameIndex(index);
+    },
+    [replayFrames, set],
+  );
+
+  const syncNextReplayFrame = React.useCallback(() => {
+    if (replayFrames.length === 0) {
+      return;
+    }
+
+    const next = Math.min(replayFrameIndex + 1, replayFrames.length - 1);
+
+    applyReplayFrame(next);
+    set("/workflowMapStreaming", next < replayFrames.length - 1);
+
+    if (next >= replayFrames.length - 1) {
+      setSignalSimulationRunning(clientSlug, false);
+    }
+  }, [applyReplayFrame, clientSlug, replayFrameIndex, replayFrames.length, set]);
+
+  React.useEffect(() => {
+    if (!simulationRunning) {
+      return;
+    }
+
+    const interval = window.setInterval(syncNextReplayFrame, 2000);
+
+    return () => window.clearInterval(interval);
+  }, [simulationRunning, syncNextReplayFrame]);
+
+  function toggleSimulation() {
+    if (simulationRunning) {
+      set("/workflowMapStreaming", false);
+      setSignalSimulationRunning(clientSlug, false);
+      return;
+    }
+
+    if (replayFrames.length === 0) {
+      return;
+    }
+
+    if (replayFrameIndex >= replayFrames.length - 1) {
+      applyReplayFrame(0);
+    }
+
+    set("/workflowMapStreaming", true);
+    setSignalSimulationRunning(clientSlug, true);
+  }
+
   function undoChart(block: Extract<SignalBlock, { kind: "chart" }>) {
     setBlocks((current) =>
       current.map((candidate) =>
@@ -250,6 +324,30 @@ export function SignalBlockCanvas({
         <IconTooltipButton label="Export report" onClick={exportMarkdown}>
           <DownloadIcon />
         </IconTooltipButton>
+        <IconTooltipButton
+          label={simulationRunning ? "Pause simulation" : "Simulate logs"}
+          onClick={toggleSimulation}
+        >
+          {simulationRunning ? <PauseIcon /> : <PlayIcon />}
+        </IconTooltipButton>
+        <IconTooltipButton
+          label="Sync now"
+          onClick={syncNextReplayFrame}
+          disabled={replayFrames.length === 0 || replayFrameIndex >= replayFrames.length - 1}
+        >
+          <RefreshCwIcon />
+        </IconTooltipButton>
+        {simulationRunning ? (
+          <a
+            href={`/${clientSlug}/logs`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 text-sm font-medium text-blue-600 outline-none hover:text-blue-700 focus-visible:ring-2 focus-visible:ring-ring/40 [&_svg]:size-4"
+          >
+            <ExternalLinkIcon />
+            Open logs
+          </a>
+        ) : null}
       </div>
       <DndContext
         id="signal-block-canvas"
@@ -552,7 +650,7 @@ function NoteBlock({
         onFocus={() => setIsEditing(true)}
         onInput={(event) => onChange(block.id, event.currentTarget.value)}
         onKeyDown={handleKeyDown}
-        placeholder="hint: use @agent to generate chart data"
+        placeholder="use @agent to build charts"
         className="block min-h-6 w-full resize-none overflow-hidden bg-transparent text-sm leading-6 text-foreground outline-none placeholder:italic placeholder:text-muted-foreground"
       />
       {isAgentCommand(block.text) ? (

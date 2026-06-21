@@ -232,7 +232,7 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
         "aws_region": "us-west-2",
         "ses_message_id": "0101018f75a4e883-1b20",
         "mailbox": "sourcing@demo-brand.example",
-        "from_domain": "evergreen-grain.example",
+        "from_domain": "harbor-milling.example",
         "subject_hash": "sha256:c8b12af0",
         "attachment_count": 1,
         "thread_id": "thread-2a6f"
@@ -246,10 +246,10 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
       "severity": "warn",
       "message": "quote fields extracted with missing lead time",
       "attributes": {
-        "document_id": "doc_tmp_quote_evergreen_411",
+        "document_id": "doc_tmp_quote_harbor_411",
         "thread_id": "thread-2a6f",
         "parser": "email-body-parser",
-        "supplier_display_name": "Evergreen Grain Co.",
+        "supplier_display_name": "Harbor Milling Co.",
         "ingredient_display_name": "rolled oats",
         "workflow_id": "rfp_2026_05_grains",
         "extracted_fields": [
@@ -279,7 +279,7 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
         "document_id": "doc_tmp_spec_909",
         "parser": "pdf-text",
         "document_type_guess": "spec_sheet",
-        "supplier_display_name": "Evergreen Grain Co.",
+        "supplier_display_name": "Harbor Milling Co.",
         "ingredient_display_name": "rolled oats",
         "language_detected": "en",
         "extracted_fields": [
@@ -311,7 +311,7 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
         "target_workspace": "rd",
         "intended_workspace": "qa",
         "document_id": "doc_tmp_spec_909",
-        "supplier_display_name": "Evergreen Grain Co.",
+        "supplier_display_name": "Harbor Milling Co.",
         "ingredient_display_name": "rolled oats"
       }
     },
@@ -393,8 +393,8 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
         "workflow_id": "rfp_2026_05_grains",
         "queue": "outbound-email",
         "template": "quote_followup_leadtime_coa",
-        "recipient_domain": "evergreen-grain.example",
-        "supplier_display_name": "Evergreen Grain Co.",
+        "recipient_domain": "harbor-milling.example",
+        "supplier_display_name": "Harbor Milling Co.",
         "ingredient_display_name": "rolled oats",
         "requested_fields": [
           "lead_time",
@@ -724,9 +724,9 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
       "traceId": "13d8a5cdd9604f2d8cb066c2d913be31",
       "spanId": "b6218dc5f22446fd",
       "attributes": {
-        "supplier_display_name": "Evergreen Grain Co.",
+        "supplier_display_name": "Harbor Milling Co.",
         "ingredient_display_name": "rolled oats",
-        "edge_id": "edge_evergreen_rolled_oats",
+        "edge_id": "edge_harbor_rolled_oats",
         "previous_edge_status": "needs_review",
         "next_edge_status": "blocked",
         "blocked_by": "missing_required_document",
@@ -959,7 +959,7 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
       "severity": "warn",
       "message": "supplier auto-reply captured in active rfp thread",
       "attributes": {
-        "thread_id": "thread-2a6f",
+        "thread_id": "thread-evergreen-2a6f",
         "from_domain": "evergreen-grain.example",
         "mailbox": "sourcing@demo-brand.example",
         "auto_submitted_header": "auto-replied",
@@ -1319,7 +1319,7 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
       "value": 2,
       "tags": {
         "document_type_guess": "spec_sheet",
-        "supplier_domain": "evergreen-grain.example"
+        "supplier_domain": "harbor-milling.example"
       }
     },
     {
@@ -1862,7 +1862,7 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
       "durationMs": 169,
       "status": "ok",
       "attributes": {
-        "edge.id": "edge_evergreen_rolled_oats",
+        "edge.id": "edge_harbor_rolled_oats",
         "edge.status.previous": "needs_review",
         "edge.status.next": "blocked",
         "edge.blocked_by": "missing_required_document",
@@ -2225,18 +2225,18 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
         "message_id": "0101018f75a4e883-1b20",
         "receipt_rule": "demo-brand-sourcing",
         "attachment_count": 1,
-        "from_domain": "evergreen-grain.example"
+        "from_domain": "harbor-milling.example"
       }
     },
     {
-      "id": "evt_01hx_evergreen_quote_fields_extracted",
+      "id": "evt_01hx_harbor_quote_fields_extracted",
       "source": "signal.document-extractor",
       "type": "quote.fields.extracted",
       "time": "2026-06-05T16:05:00.921Z",
-      "subject": "document/doc_tmp_quote_evergreen_411",
+      "subject": "document/doc_tmp_quote_harbor_411",
       "data": {
         "thread_id": "thread-2a6f",
-        "supplier_display_name": "Evergreen Grain Co.",
+        "supplier_display_name": "Harbor Milling Co.",
         "ingredient_display_name": "rolled oats",
         "workflow_id": "rfp_2026_05_grains",
         "extracted_fields": [
@@ -2258,7 +2258,7 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
       "time": "2026-06-05T16:05:01.772Z",
       "subject": "document/doc_tmp_spec_909",
       "data": {
-        "supplier_display_name": "Evergreen Grain Co.",
+        "supplier_display_name": "Harbor Milling Co.",
         "ingredient_display_name": "rolled oats",
         "missing_fields": [
           "allergen_statement",
@@ -2274,7 +2274,7 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
       "time": "2026-06-05T16:05:03.209Z",
       "subject": "document/doc_tmp_spec_909",
       "data": {
-        "supplier_display_name": "Evergreen Grain Co.",
+        "supplier_display_name": "Harbor Milling Co.",
         "ingredient_display_name": "rolled oats",
         "source_workspace": "procurement",
         "target_workspace": "rd",
@@ -2314,13 +2314,13 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
       }
     },
     {
-      "id": "evt_01hx_evergreen_followup_queued",
+      "id": "evt_01hx_harbor_followup_queued",
       "source": "signal.rfp-workflow",
       "type": "supplier.followup_email.queued",
       "time": "2026-06-08T14:05:24.901Z",
       "subject": "workflow/rfp_2026_05_grains",
       "data": {
-        "supplier_display_name": "Evergreen Grain Co.",
+        "supplier_display_name": "Harbor Milling Co.",
         "ingredient_display_name": "rolled oats",
         "workflow_id": "rfp_2026_05_grains",
         "requested_fields": [
@@ -2498,7 +2498,7 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
       "source": "signal.supplier-graph",
       "type": "supplier_ingredient_edge.status_changed",
       "time": "2026-06-11T15:20:13.008Z",
-      "subject": "edge/edge_evergreen_rolled_oats",
+      "subject": "edge/edge_harbor_rolled_oats",
       "data": {
         "previous_status": "needs_review",
         "next_status": "blocked",
@@ -2652,7 +2652,7 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
       "source": "aws.ses",
       "type": "email.auto_reply.received",
       "time": "2026-06-15T14:03:01.533Z",
-      "subject": "thread/thread-2a6f",
+      "subject": "thread/thread-evergreen-2a6f",
       "data": {
         "from_domain": "evergreen-grain.example",
         "mailbox": "sourcing@demo-brand.example",
@@ -2801,6 +2801,69 @@ export const acmeBaseSandbox: AcmeBaseSandbox = {
         "element": "mark-field-needs-review",
         "field": "expiration_date",
         "document_id": "doc_tmp_cert_443"
+      }
+    },
+    {
+      "id": "evt_01hx_bol_fields_extracted",
+      "source": "signal.document-extractor",
+      "type": "document.bol.fields_extracted",
+      "time": "2026-06-18T15:02:13.240Z",
+      "subject": "document/doc_tmp_bol_771",
+      "data": {
+        "workflow_id": "rfp_2026_06_sweeteners_award",
+        "request_type": "rfp",
+        "supplier_display_name": "Northstar Sweeteners",
+        "ingredient_display_name": "rice syrup blend",
+        "document_id": "doc_tmp_bol_771",
+        "document_type_guess": "bol",
+        "extracted_fields": [
+          "bill_of_lading",
+          "carrier",
+          "delivery_date",
+          "lot_number"
+        ]
+      }
+    },
+    {
+      "id": "evt_01hx_traceability_fields_extracted",
+      "source": "signal.document-extractor",
+      "type": "document.traceability.fields_extracted",
+      "time": "2026-06-18T15:07:44.510Z",
+      "subject": "document/doc_tmp_trace_771",
+      "data": {
+        "workflow_id": "rfp_2026_06_sweeteners_award",
+        "request_type": "rfp",
+        "supplier_display_name": "Northstar Sweeteners",
+        "ingredient_display_name": "rice syrup blend",
+        "document_id": "doc_tmp_trace_771",
+        "document_type_guess": "traceability_document",
+        "extracted_fields": [
+          "traceability_document",
+          "lot_number",
+          "source_origin"
+        ]
+      }
+    },
+    {
+      "id": "evt_01hx_rd_allergen_review_requested",
+      "source": "signal.web-app",
+      "type": "internal.handoff.review_requested",
+      "time": "2026-06-18T15:12:02.118Z",
+      "subject": "document/doc_tmp_spec_909",
+      "data": {
+        "workflow_id": "rfp_2026_06_sweeteners_award",
+        "request_type": "rfp",
+        "supplier_display_name": "Northstar Sweeteners",
+        "ingredient_display_name": "rice syrup blend",
+        "document_id": "doc_tmp_spec_909",
+        "document_type_guess": "allergen_statement",
+        "from_role": "qa",
+        "to_role": "rd",
+        "owner_role": "rd",
+        "extracted_fields": [
+          "allergen_statement",
+          "cross_contact_risk"
+        ]
       }
     },
     {
