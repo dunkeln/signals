@@ -12,6 +12,8 @@ Add logs that help Signal understand product workflow state without changing pro
 - Log durable workflow boundaries, not every interaction.
 - Prefer the product's existing logger, queue, or telemetry client.
 - Logging must be non-blocking: logging failure must not fail the product path.
+- For hot paths or high-throughput events, prefer the existing batched queue/buffer. Do not add one network write per event.
+- Do not invent batching infrastructure: no new `setTimeout`/`setInterval` buffers, background queues, retry loops, or flush daemons unless the product already has that pattern. If no batching path exists, use the existing logger and note the high-throughput concern.
 - Do not add business decisions, recommendations, or status interpretation.
 - Do not log secrets, credentials, tokens, payment data, raw email bodies, full document text, or unnecessary personal data.
 - Supplier names, company names, material names, document types, workflow ids, entity ids, and coarse roles are okay when they are needed to understand workflow state.
@@ -88,5 +90,6 @@ logger.info("signal.workflow_event", {
 1. Inspect the existing logging/telemetry path first.
 2. Add the smallest log at the workflow boundary.
 3. Keep the log payload JSON-serializable.
-4. Wrap best-effort logging if the existing logger can throw.
-5. Verify the product path still works without relying on the log succeeding.
+4. Use batching/backpressure already present in the codebase for high-volume paths.
+5. Wrap best-effort logging if the existing logger can throw.
+6. Verify the product path still works without relying on the log succeeding.
