@@ -23,9 +23,12 @@ import type { Spec } from "@json-render/core";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
+  ArrowUpIcon,
+  DownloadIcon,
   GripVerticalIcon,
   LoaderCircleIcon,
   PlusIcon,
+  RotateCcwIcon,
   SparklesIcon,
   Trash2Icon,
 } from "lucide-react";
@@ -39,50 +42,37 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  executeChartInstruction,
-  type GeneratedChartDataset,
-} from "@/lib/protocol/v0";
+import { executeChartInstruction } from "@/lib/protocol/v0";
 import { submitSignalPrompt } from "@/lib/signal/agent-client";
 import type { SignalIntelligenceState } from "@/lib/signal/intelligence";
+import {
+  fileToken,
+  reportMarkdown,
+  type ReportBlock,
+} from "@/lib/signal/report-document";
 import type { SignalWorkflowMapData } from "@/lib/signal/workflow-map";
 import { cn } from "@/lib/utils";
 
-type SignalBlock =
-  | {
-      id: "workflow-map";
-      kind: "workflow";
-    }
-  | {
-      id: string;
-      kind: "note";
-      text: string;
-    }
-  | {
-      id: string;
-      kind: "chart";
-      dataset: GeneratedChartDataset;
-    };
+type SignalBlock = ReportBlock;
 
 interface SignalBlockCanvasProps {
   clientSlug: string;
+  initialBlocks: SignalBlock[];
   workflowSpec: Spec;
 }
 
 export function SignalBlockCanvas({
   clientSlug,
+  initialBlocks,
   workflowSpec,
 }: SignalBlockCanvasProps) {
   const { set } = useStateStore();
   const documentTitle = useStateValue<string | undefined>("/document/title");
   const signal = useStateValue<SignalIntelligenceState | undefined>("/signal");
   const workflowMap = useStateValue<SignalWorkflowMapData | undefined>("/workflowMap");
-  const [blocks, setBlocks] = React.useState<SignalBlock[]>([
-    { id: "workflow-map", kind: "workflow" },
-    { id: "note-1", kind: "note", text: "" },
-  ]);
+  const [blocks, setBlocks] = React.useState<SignalBlock[]>(initialBlocks);
   const [runningBlockId, setRunningBlockId] = React.useState<string | null>(null);
-  const nextNoteId = React.useRef(2);
+  const nextNoteId = React.useRef(nextNoteIndex(initialBlocks));
   const documentTitleStorageKey = `signal:document-title:${clientSlug}`;
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -92,21 +82,38 @@ export function SignalBlockCanvas({
   );
 
   React.useEffect(() => {
-    const savedTitle = window.localStorage.getItem(documentTitleStorageKey);
-
-    if (savedTitle) {
-      set("/document/title", savedTitle);
+    if (!documentTitle) {
+      return;
     }
-  }, [documentTitleStorageKey, set]);
+
+    window.localStorage.setItem(documentTitleStorageKey, documentTitle);
+    window.dispatchEvent(
+      new CustomEvent("signal-document-title-change", {
+        detail: { clientSlug, title: documentTitle },
+      }),
+    );
+  }, [clientSlug, documentTitle, documentTitleStorageKey]);
+
+  React.useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      void fetch("/api/signal-document", {
+        method: "PUT",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          clientSlug,
+          document: {
+            title: documentTitle ?? "",
+            blocks,
+          },
+        }),
+      });
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [blocks, clientSlug, documentTitle]);
 
   function updateDocumentTitle(title: string) {
     set("/document/title", title);
-    window.localStorage.setItem(documentTitleStorageKey, title);
-    window.dispatchEvent(
-      new CustomEvent("signal-document-title-change", {
-        detail: { clientSlug, title },
-      }),
-    );
   }
 
   function handleDragEnd(event: DragEndEvent) {
@@ -152,19 +159,47 @@ export function SignalBlockCanvas({
     setBlocks((current) => current.filter((block) => block.id !== id));
   }
 
-  async function runAgent(block: Extract<SignalBlock, { kind: "note" }>) {
-    const prompt = agentPrompt(block.text);
+  function exportMarkdown() {
+    const title = documentTitle?.trim() || "Untitled report";
+    const markdown = reportMarkdown({ title, blocks });
+    const url = URL.createObjectURL(
+      new Blob([markdown], { type: "text/markdown;charset=utf-8" }),
+    );
+    const link = document.createElement("a");
 
-    if (!prompt || runningBlockId || !signal || !workflowMap) {
+    link.href = url;
+    link.download = `${fileToken(title)}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function undoChart(block: Extract<SignalBlock, { kind: "chart" }>) {
+    setBlocks((current) =>
+      current.map((candidate) =>
+        candidate.id === block.id
+          ? {
+              id: block.id,
+              kind: "note",
+              text: block.sourceText ?? `@agent ${block.prompt ?? ""}`.trim(),
+            }
+          : candidate,
+      ),
+    );
+  }
+
+  async function runChartPrompt(id: string, prompt: string, sourceText: string) {
+    const cleanPrompt = prompt.trim();
+
+    if (!cleanPrompt || runningBlockId || !signal || !workflowMap) {
       return;
     }
 
-    setRunningBlockId(block.id);
+    setRunningBlockId(id);
 
     try {
       const runtimeResult = await submitSignalPrompt({
         clientSlug,
-        message: prompt,
+        message: cleanPrompt,
       });
       const dataset = executeChartInstruction({
         instruction: runtimeResult.instruction,
@@ -174,8 +209,14 @@ export function SignalBlockCanvas({
 
       setBlocks((current) =>
         current.map((candidate) =>
-          candidate.id === block.id
-            ? { id: block.id, kind: "chart", dataset }
+          candidate.id === id
+            ? {
+                id,
+                kind: "chart",
+                dataset,
+                prompt: cleanPrompt,
+                sourceText,
+              }
             : candidate,
         ),
       );
@@ -192,15 +233,24 @@ export function SignalBlockCanvas({
     }
   }
 
+  function runAgent(block: Extract<SignalBlock, { kind: "note" }>) {
+    return runChartPrompt(block.id, agentPrompt(block.text), block.text);
+  }
+
   return (
     <div className="mx-auto flex w-full max-w-4xl flex-col gap-3 pb-8">
-      <input
-        aria-label="Document title"
-        value={documentTitle ?? ""}
-        onChange={(event) => updateDocumentTitle(event.currentTarget.value)}
-        className="w-full bg-transparent text-xl font-semibold text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
-        placeholder="Untitled report"
-      />
+      <div className="flex items-center gap-2">
+        <input
+          aria-label="Document title"
+          value={documentTitle ?? ""}
+          onChange={(event) => updateDocumentTitle(event.currentTarget.value)}
+          className="min-w-0 flex-1 bg-transparent text-xl font-semibold text-foreground outline-none placeholder:text-muted-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
+          placeholder="Untitled report"
+        />
+        <IconTooltipButton label="Export report" onClick={exportMarkdown}>
+          <DownloadIcon />
+        </IconTooltipButton>
+      </div>
       <DndContext
         id="signal-block-canvas"
         sensors={sensors}
@@ -229,8 +279,13 @@ export function SignalBlockCanvas({
                     onRun={runAgent}
                   />
                 ) : (
-                  <GeneratedChartView
-                    dataset={block.dataset}
+                  <ChartBlock
+                    block={block}
+                    isRunning={runningBlockId === block.id}
+                    onUndo={undoChart}
+                    onRun={(prompt) =>
+                      runChartPrompt(block.id, prompt, `@agent ${prompt}`)
+                    }
                     onTitleChange={(title) => updateChartTitle(block.id, title)}
                   />
                 )}
@@ -308,7 +363,7 @@ function SortableBlockShell({
         setMenuPosition({ x: event.clientX, y: event.clientY });
       }}
       style={{
-        transform: CSS.Transform.toString(transform),
+        transform: CSS.Translate.toString(transform),
         transition,
       }}
       className={cn(
@@ -317,14 +372,16 @@ function SortableBlockShell({
       )}
     >
       <div className="absolute left-2 top-3 flex flex-col gap-1 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-        <IconTooltipButton
-          label="Rearrange"
+        <button
+          type="button"
+          aria-label="Rearrange"
+          className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40 [&_svg]:size-4"
           ref={setActivatorNodeRef}
           {...attributes}
           {...listeners}
         >
           <GripVerticalIcon />
-        </IconTooltipButton>
+        </button>
       </div>
       {children}
       {menuPosition ? (
@@ -345,6 +402,79 @@ function SortableBlockShell({
             Delete
           </button>
         </div>
+      ) : null}
+    </div>
+  );
+}
+
+function ChartBlock({
+  block,
+  isRunning,
+  onUndo,
+  onRun,
+  onTitleChange,
+}: {
+  block: Extract<SignalBlock, { kind: "chart" }>;
+  isRunning: boolean;
+  onUndo: (block: Extract<SignalBlock, { kind: "chart" }>) => void;
+  onRun: (prompt: string) => void;
+  onTitleChange: (title: string) => void;
+}) {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [draft, setDraft] = React.useState(() => block.prompt ?? "");
+  const canRun = draft.trim().length > 0 && !isRunning;
+
+  function submit(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+
+    if (canRun) {
+      onRun(draft);
+      setIsOpen(false);
+    }
+  }
+
+  return (
+    <div className="relative">
+      <div className="absolute right-0 top-0 z-10 flex gap-1">
+        <IconTooltipButton label="Undo chart" onClick={() => onUndo(block)}>
+          <RotateCcwIcon />
+        </IconTooltipButton>
+        <IconTooltipButton
+          label="Edit prompt"
+          onClick={() => setIsOpen((current) => !current)}
+        >
+          {isRunning ? (
+            <LoaderCircleIcon className="animate-spin" />
+          ) : (
+            <SparklesIcon />
+          )}
+        </IconTooltipButton>
+      </div>
+      <GeneratedChartView
+        dataset={block.dataset}
+        onTitleChange={onTitleChange}
+      />
+      {isOpen ? (
+        <form
+          className="absolute right-0 top-9 z-20 flex w-80 items-end gap-2 border border-border bg-background p-2 shadow-md"
+          onSubmit={submit}
+        >
+          <textarea
+            aria-label="Chart prompt"
+            rows={2}
+            value={draft}
+            onChange={(event) => setDraft(event.currentTarget.value)}
+            className="min-h-10 flex-1 resize-none bg-transparent text-sm leading-5 text-foreground outline-none placeholder:italic placeholder:text-muted-foreground"
+            placeholder="prompt"
+          />
+          <IconTooltipButton
+            label="Regenerate chart"
+            type="submit"
+            disabled={!canRun}
+          >
+            <ArrowUpIcon />
+          </IconTooltipButton>
+        </form>
       ) : null}
     </div>
   );
@@ -376,7 +506,7 @@ function NoteBlock({
 
     textarea.style.height = "auto";
     textarea.style.height = `${textarea.scrollHeight}px`;
-  }, [block.text]);
+  }, [block.text, isEditing]);
 
   function handleKeyDown(event: React.KeyboardEvent<HTMLTextAreaElement>) {
     if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && canRun) {
@@ -423,7 +553,7 @@ function NoteBlock({
         onInput={(event) => onChange(block.id, event.currentTarget.value)}
         onKeyDown={handleKeyDown}
         placeholder="hint: use @agent to generate chart data"
-        className="block min-h-6 w-full resize-none overflow-hidden bg-transparent text-sm leading-6 text-foreground outline-none placeholder:text-muted-foreground"
+        className="block min-h-6 w-full resize-none overflow-hidden bg-transparent text-sm leading-6 text-foreground outline-none placeholder:italic placeholder:text-muted-foreground"
       />
       {isAgentCommand(block.text) ? (
         <div className="absolute bottom-0 right-0">
@@ -483,4 +613,15 @@ function isAgentCommand(text: string) {
 
 function agentPrompt(text: string) {
   return text.replace(/(^|\s)@agent\b[:\s-]*/i, " ").trim();
+}
+
+function nextNoteIndex(blocks: SignalBlock[]) {
+  const maxNoteId = Math.max(
+    1,
+    ...blocks
+      .filter((block) => block.kind === "note")
+      .map((block) => Number(block.id.match(/^note-(\d+)$/)?.[1] ?? 0)),
+  );
+
+  return maxNoteId + 1;
 }

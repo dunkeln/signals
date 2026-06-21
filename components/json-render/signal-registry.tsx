@@ -562,7 +562,8 @@ function SemioticWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
 
           return (
             <div className="text-xs font-medium text-foreground">
-              {edge.contentLabel ?? edge.summary ?? "Workflow link"}
+              {edge.contentLabel ?? edge.summary ?? "Workflow link"} ·{" "}
+              {edge.value}
             </div>
           );
         }}

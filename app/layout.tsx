@@ -1,26 +1,12 @@
 import "./globals.css";
 import { Geist } from "next/font/google";
-import {
-  ActivityIcon,
-  CompassIcon,
-  GaugeIcon,
-  SettingsIcon,
-} from "lucide-react";
 
 import { SiteBreadcrumb } from "@/components/site-breadcrumb";
-import { Button } from "@/components/ui/button";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 
 const geist = Geist({ subsets: ["latin"], variable: "--font-sans" });
-
-const railItems = [
-  ActivityIcon,
-  CompassIcon,
-  GaugeIcon,
-  SettingsIcon,
-];
 
 export default function RootLayout({
   children,
@@ -39,30 +25,12 @@ export default function RootLayout({
                 </div>
               </header>
 
-              <div className="relative flex min-h-0 flex-1 overflow-visible">
-                <aside
-                  aria-label="Section navigation"
-                  className="absolute left-0 top-16 hidden -translate-x-[calc(100%+0.25rem)] flex-col gap-3 sm:flex"
-                >
-                  {railItems.map((Icon, index) => (
-                    <Button
-                      key={index}
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={`Navigation item ${index + 1}`}
-                    >
-                      <Icon data-icon="inline-start" />
-                    </Button>
-                  ))}
-                </aside>
-
-                <section
-                  aria-label="Workspace"
-                  className="mx-auto flex h-full min-h-0 w-full flex-1 items-start overflow-y-auto pt-10"
-                >
-                  {children}
-                </section>
-              </div>
+              <section
+                aria-label="Workspace"
+                className="mx-auto flex min-h-0 w-full flex-1 items-start overflow-y-auto pt-10"
+              >
+                {children}
+              </section>
             </div>
           </main>
           <Toaster />

@@ -129,7 +129,7 @@ function linkForPacket(
 }
 
 const pacificTimeZone = "America/Los_Angeles";
-const weekdayLabels = ["M", "T", "W", "Th", "F", "Sat", "Sun"];
+const weekdayLabels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
 function businessTimeFor(observedAt: string, currentWeekStart: number) {
   const time = Date.parse(observedAt);

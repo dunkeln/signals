@@ -20,7 +20,12 @@ export function SignalRenderer({ spec, state }: SignalRendererProps) {
       initialState={state as unknown as Record<string, unknown>}
     >
       <RuntimeToast />
-      <SignalBlockCanvas clientSlug={state.client.slug} workflowSpec={spec} />
+      <SignalBlockCanvas
+        key={state.client.slug}
+        clientSlug={state.client.slug}
+        initialBlocks={state.document.blocks}
+        workflowSpec={spec}
+      />
     </JSONUIProvider>
   );
 }

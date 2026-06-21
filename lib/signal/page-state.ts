@@ -1,4 +1,4 @@
-import type { FixtureRoute } from "@/lib/fixtures/registry";
+import type { SignalFixtureRoute } from "@/lib/fixtures/registry";
 import {
   buildChartProtocolState,
   type ChartProtocolState,
@@ -7,10 +7,12 @@ import {
 import {
   buildSignalCanonicalState,
 } from "@/lib/signal/canonical-state";
+import { readReportDocument } from "@/lib/signal/document-store";
 import {
   buildSignalIntelligenceState,
   type SignalIntelligenceState,
 } from "@/lib/signal/intelligence";
+import type { ReportDocument } from "@/lib/signal/report-document";
 import {
   buildSignalWorkflowMap,
   type SignalWorkflowMapData,
@@ -21,19 +23,13 @@ export interface SignalPageState {
     slug: string;
     label: string;
   };
-  document: {
-    title: string;
-  };
+  document: ReportDocument;
   signal: SignalIntelligenceState;
   workflowMap: SignalWorkflowMapData;
   chartProtocol: ChartProtocolState;
   generatedChartData: GeneratedChartDataset | null;
   runtimeErrorMessage: string | null;
 }
-
-export type SignalFixtureRoute = FixtureRoute & {
-  ingress: NonNullable<FixtureRoute["ingress"]>;
-};
 
 export async function buildSignalPageState(
   fixtureRoute: SignalFixtureRoute,
@@ -43,6 +39,7 @@ export async function buildSignalPageState(
   const workflowMap = buildSignalWorkflowMap(canonical.packetSets, {
     clientLabel: fixtureRoute.label,
   });
+  const document = await readReportDocument(fixtureRoute.slug, fixtureRoute.label);
 
   return {
     client: {
@@ -50,7 +47,8 @@ export async function buildSignalPageState(
       label: fixtureRoute.label,
     },
     document: {
-      title: fixtureRoute.label,
+      title: document.title,
+      blocks: document.blocks,
     },
     signal,
     workflowMap,

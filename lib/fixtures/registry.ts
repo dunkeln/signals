@@ -8,6 +8,10 @@ export interface FixtureRoute {
   ingress?: RawObservabilityFixture;
 }
 
+export type SignalFixtureRoute = FixtureRoute & {
+  ingress: RawObservabilityFixture;
+};
+
 export const fixtureRoutes = [
   {
     slug: "acme-base-sandbox",
@@ -23,4 +27,10 @@ export const fixtureRoutes = [
 
 export function getFixtureRoute(slug: string) {
   return fixtureRoutes.find((fixture) => fixture.slug === slug);
+}
+
+export function hasFixtureIngress(
+  fixtureRoute: FixtureRoute | undefined,
+): fixtureRoute is SignalFixtureRoute {
+  return Boolean(fixtureRoute?.ingress);
 }

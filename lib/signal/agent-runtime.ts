@@ -2,7 +2,7 @@ import { Agent, run } from "@openai/agents";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import type { FixtureRoute } from "@/lib/fixtures/registry";
+import type { SignalFixtureRoute } from "@/lib/fixtures/registry";
 import {
   buildChartProtocolState,
   chartInstructionSchema,
@@ -25,7 +25,7 @@ export async function runSignalAgent({
   fixtureRoute,
   message,
 }: {
-  fixtureRoute: FixtureRoute & { ingress: NonNullable<FixtureRoute["ingress"]> };
+  fixtureRoute: SignalFixtureRoute;
   message: string;
 }): Promise<SignalAgentRuntimeResponse> {
   if (!process.env.OPENAI_API_KEY) {

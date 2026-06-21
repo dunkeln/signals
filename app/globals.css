@@ -149,9 +149,13 @@
 
   .semiotic-signal-chart svg text,
   .semiotic-signal-chart canvas + svg text {
-    fill: var(--muted-foreground);
-    font-family: var(--font-sans);
-    letter-spacing: 0;
+    fill: var(--foreground) !important;
+    font-family: var(--font-sans) !important;
+    letter-spacing: 0 !important;
+    paint-order: stroke !important;
+    stroke: var(--background) !important;
+    stroke-linejoin: round !important;
+    stroke-width: 4px !important;
   }
 
   .semiotic-signal-chart .stream-network-tooltip {

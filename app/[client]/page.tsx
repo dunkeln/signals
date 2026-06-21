@@ -2,7 +2,7 @@ import { notFound } from "next/navigation";
 
 import { SignalRenderer } from "@/components/json-render/signal-renderer";
 import { SignalPageStatePayload } from "@/components/signal-page-state-payload";
-import { getFixtureRoute } from "@/lib/fixtures/registry";
+import { getFixtureRoute, hasFixtureIngress } from "@/lib/fixtures/registry";
 import { compileChartSpec } from "@/lib/protocol/v0";
 import { buildSignalPageState } from "@/lib/signal/page-state";
 
@@ -12,18 +12,11 @@ export default async function ClientPage({
   const { client } = await params;
   const fixtureRoute = getFixtureRoute(client);
 
-  if (!fixtureRoute) {
+  if (!hasFixtureIngress(fixtureRoute)) {
     notFound();
   }
 
-  if (!fixtureRoute.ingress) {
-    notFound();
-  }
-
-  const state = await buildSignalPageState({
-    ...fixtureRoute,
-    ingress: fixtureRoute.ingress,
-  });
+  const state = await buildSignalPageState(fixtureRoute);
   const spec = compileChartSpec();
 
   return (

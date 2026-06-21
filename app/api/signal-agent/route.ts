@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { getFixtureRoute } from "@/lib/fixtures/registry";
+import { getFixtureRoute, hasFixtureIngress } from "@/lib/fixtures/registry";
 import { runSignalAgent } from "@/lib/signal/agent-runtime";
 
 const signalAgentRequestSchema = z.object({
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
 
   const fixtureRoute = getFixtureRoute(parsed.data.clientSlug);
 
-  if (!fixtureRoute?.ingress) {
+  if (!hasFixtureIngress(fixtureRoute)) {
     return Response.json(
       { error: "No signal fixture is available for this client." },
       { status: 404 },
@@ -30,10 +30,7 @@ export async function POST(request: Request) {
   try {
     return Response.json(
       await runSignalAgent({
-        fixtureRoute: {
-          ...fixtureRoute,
-          ingress: fixtureRoute.ingress,
-        },
+        fixtureRoute,
         message: parsed.data.message,
       }),
     );
