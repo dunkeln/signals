@@ -3,223 +3,35 @@ import {
   collectSourceRecords,
   type SourceRecord,
 } from "@/lib/signal/intelligence";
+import { buildPacketSetState } from "@/lib/signal/canonical-packets";
+import type {
+  SignalCanonicalState,
+  SignalEntityInstance,
+  SignalEvidenceSupport,
+  SignalWorkflowStatus,
+} from "@/lib/signal/canonical-types";
 
-export type SignalWorkflowStatus =
-  | "requested"
-  | "received"
-  | "review_required"
-  | "blocked";
-export type SignalEvidenceSupport = "strong" | "partial";
-
-export interface SignalWorkflowNode {
-  id: SignalWorkflowNodeId;
-  tier: 0 | 1 | 2 | 3 | 4 | 5 | 6;
-  label: string;
-  parentCategory?: string;
-}
-
-export interface SignalWorkflowEdge {
-  from: SignalWorkflowNodeId;
-  to: SignalWorkflowNodeId;
-}
-
-export interface SignalEntityInstance {
-  id: string;
-  nodeId: SignalWorkflowNodeId;
-  parentRefs: string[];
-  payload: SignalEntityPayload;
-  asOf: string;
-  evidenceSourceIds: string[];
-  support: SignalEvidenceSupport;
-  summary: string;
-  supplier?: string;
-  material?: string;
-  workflowId?: string;
-  ownerRole?: string;
-  status?: SignalWorkflowStatus;
-}
-
-export interface SignalCanonicalState {
-  workflowNodes: SignalWorkflowNode[];
-  workflowEdges: SignalWorkflowEdge[];
-  entities: SignalEntityInstance[];
-}
-
-export type SignalWorkflowNodeId =
-  | "supplier_email_inbox"
-  | "email_instance"
-  | "rfx_related_content"
-  | "document_instance"
-  | "rfp"
-  | "rfq"
-  | "rfi"
-  | "supplier_boundary"
-  | "price_received"
-  | "moq_received"
-  | "lead_time_received"
-  | "incoterms_received"
-  | "docs_received"
-  | "rfp_response_received"
-  | "coa"
-  | "spec_sheet"
-  | "haccp_plan"
-  | "sds"
-  | "supplier_questionnaire"
-  | "insurance_certificate"
-  | "certification"
-  | "qa_gate"
-  | "system_entry"
-  | "purchase_order"
-  | "invoice"
-  | "bol"
-  | "lot_coa"
-  | "otif"
-  | "realized_value";
-
-type SignalEntityPayload =
-  | {
-      kind: "supplier_email_inbox";
-      mailbox: string;
-    }
-  | {
-      kind: "email_instance";
-      threadId: string;
-      supplierDomain: string;
-      attachmentCount: number;
-    }
-  | {
-      kind: "rfx_related_content";
-      requestKind: "rfp" | "rfq" | "rfi";
-      workflowId: string;
-      fields: string[];
-    }
-  | {
-      kind: "document_instance";
-      documentId: string;
-      documentType: string;
-    }
-  | {
-      kind: "client_request";
-      requestKind: "rfp" | "rfq" | "rfi";
-      workflowId: string;
-    }
-  | {
-      kind: "supplier_boundary";
-      supplierId: string;
-      sourcingProcessRef: string;
-      clientRequestRef: string;
-      enteredBoundaryAt: string;
-    }
-  | {
-      kind: "sourcing_field";
-      field: string;
-      valueState: "received" | "requested";
-    }
-  | {
-      kind: "document";
-      documentId: string;
-      documentType: string;
-      confidence?: number;
-      expirationDate?: string;
-      certificateType?: string;
-      lowConfidenceFields?: string[];
-    }
-  | {
-      kind: "supplier_gate";
-      gateKind: "qa_review" | "supplier_document_gate";
-      reasonCodes: string[];
-    }
-  | {
-      kind: "empty_future_node";
-    };
-
-export const signalWorkflowNodes: SignalWorkflowNode[] = [
-  { id: "supplier_email_inbox", tier: 0, label: "supplier email inbox" },
-  { id: "email_instance", tier: 0, label: "email instance" },
-  { id: "rfx_related_content", tier: 0, label: "RFx content" },
-  { id: "document_instance", tier: 0, label: "document instance" },
-  { id: "rfp", tier: 1, label: "RFP" },
-  { id: "rfq", tier: 1, label: "RFQ" },
-  { id: "rfi", tier: 1, label: "RFI" },
-  { id: "supplier_boundary", tier: 3, label: "supplier boundary" },
-  { id: "price_received", tier: 2, label: "price received" },
-  { id: "moq_received", tier: 2, label: "MOQ received" },
-  { id: "lead_time_received", tier: 2, label: "lead time received" },
-  { id: "incoterms_received", tier: 2, label: "incoterms received" },
-  { id: "docs_received", tier: 2, label: "docs received" },
-  { id: "rfp_response_received", tier: 2, label: "RFP response received" },
-  { id: "coa", tier: 4, label: "CoA", parentCategory: "Document" },
-  { id: "spec_sheet", tier: 4, label: "spec sheet", parentCategory: "Document" },
-  { id: "haccp_plan", tier: 4, label: "HACCP plan", parentCategory: "Document" },
-  { id: "sds", tier: 4, label: "SDS", parentCategory: "Document" },
-  {
-    id: "supplier_questionnaire",
-    tier: 4,
-    label: "supplier questionnaire",
-    parentCategory: "Document",
-  },
-  {
-    id: "insurance_certificate",
-    tier: 4,
-    label: "insurance certificate",
-    parentCategory: "Document",
-  },
-  {
-    id: "certification",
-    tier: 4,
-    label: "certification",
-    parentCategory: "Document",
-  },
-  { id: "qa_gate", tier: 3, label: "QA gate" },
-  { id: "system_entry", tier: 3, label: "system entry" },
-  { id: "purchase_order", tier: 5, label: "purchase order" },
-  { id: "invoice", tier: 5, label: "invoice" },
-  { id: "bol", tier: 5, label: "BOL" },
-  { id: "lot_coa", tier: 5, label: "lot CoA" },
-  { id: "otif", tier: 6, label: "OTIF" },
-  { id: "realized_value", tier: 6, label: "realized value" },
-];
-
-export const signalWorkflowEdges: SignalWorkflowEdge[] = [
-  { from: "supplier_email_inbox", to: "email_instance" },
-  { from: "email_instance", to: "rfx_related_content" },
-  { from: "email_instance", to: "document_instance" },
-  { from: "rfx_related_content", to: "rfp" },
-  { from: "rfx_related_content", to: "rfq" },
-  { from: "rfx_related_content", to: "rfi" },
-  { from: "rfp", to: "supplier_boundary" },
-  { from: "rfq", to: "supplier_boundary" },
-  { from: "rfi", to: "supplier_boundary" },
-  { from: "supplier_boundary", to: "price_received" },
-  { from: "supplier_boundary", to: "moq_received" },
-  { from: "supplier_boundary", to: "lead_time_received" },
-  { from: "supplier_boundary", to: "incoterms_received" },
-  { from: "supplier_boundary", to: "docs_received" },
-  { from: "supplier_boundary", to: "rfp_response_received" },
-  { from: "document_instance", to: "coa" },
-  { from: "document_instance", to: "spec_sheet" },
-  { from: "document_instance", to: "certification" },
-  { from: "coa", to: "qa_gate" },
-  { from: "certification", to: "qa_gate" },
-  { from: "supplier_boundary", to: "qa_gate" },
-  { from: "supplier_boundary", to: "system_entry" },
-  { from: "supplier_boundary", to: "purchase_order" },
-  { from: "purchase_order", to: "invoice" },
-  { from: "purchase_order", to: "bol" },
-  { from: "bol", to: "lot_coa" },
-  { from: "purchase_order", to: "otif" },
-  { from: "otif", to: "realized_value" },
-];
+export type {
+  SignalCanonicalState,
+  SignalContentPacket,
+  SignalEntityInstance,
+  SignalEvidenceSupport,
+  SignalPacketOmission,
+  SignalPacketSetState,
+  SignalWorkSurface,
+  SignalWorkflowNodeId,
+  SignalWorkflowStatus,
+} from "@/lib/signal/canonical-types";
 
 export function buildSignalCanonicalState(
   ingress: AcmeBaseSandbox,
 ): SignalCanonicalState {
   const records = collectSourceRecords(ingress);
+  const entities = buildEntityInstances(records);
 
   return {
-    workflowNodes: signalWorkflowNodes,
-    workflowEdges: signalWorkflowEdges,
-    entities: buildEntityInstances(records),
+    entities,
+    packetSets: buildPacketSetState(entities, records),
   };
 }
 
@@ -476,6 +288,29 @@ function mergeMaterialClusters(clusters: ClusterRecord[]) {
   return Array.from(byMaterial.values());
 }
 
+function requestKindForRecords(
+  records: SourceRecord[],
+  workflowId: string,
+): "rfi" | "rfq" | "rfp" | "rfx" {
+  for (const record of records) {
+    const value = firstAttribute(record, ["request_type", "workflow.type"]);
+
+    if (value === "rfi" || value === "rfq" || value === "rfp") {
+      return value;
+    }
+  }
+
+  if (workflowId.startsWith("rfi_")) return "rfi";
+  if (workflowId.startsWith("rfq_")) return "rfq";
+  if (workflowId.startsWith("rfp_")) return "rfp";
+
+  return "rfx";
+}
+
+function requestKindLabel(kind: "rfi" | "rfq" | "rfp" | "rfx") {
+  return kind === "rfx" ? "RFx" : kind.toUpperCase();
+}
+
 function buildClusterEntities(
   cluster: ClusterRecord,
   allRecords: SourceRecord[],
@@ -486,7 +321,9 @@ function buildClusterEntities(
   const rfxContentId = `rfx-content:${cluster.supplierId}:${cluster.materialId}`;
   const workflowId =
     cluster.workflowId ?? `workflow:${cluster.supplierId}:${cluster.materialId}`;
-  const rfpId = `rfp:${token(workflowId)}`;
+  const requestKind = requestKindForRecords(cluster.records, workflowId);
+  const requestNodeId = requestKind === "rfx" ? "rfp" : requestKind;
+  const requestId = `${requestNodeId}:${token(workflowId)}`;
   const boundaryId = `supplier-boundary:${cluster.supplierId}:${cluster.materialId}`;
   const rfxRecords = cluster.records.filter(isRfxRecord);
   const clusterSourceIds = recordIds(cluster.records);
@@ -517,7 +354,7 @@ function buildClusterEntities(
       parentRefs: [emailId],
       payload: {
         kind: "rfx_related_content",
-        requestKind: "rfp",
+        requestKind: requestNodeId,
         workflowId,
         fields: unique(
           cluster.records.flatMap((record) =>
@@ -539,12 +376,12 @@ function buildClusterEntities(
       summary: `RFx-related content exists for ${cluster.supplier}.`,
     }),
     entity({
-      id: rfpId,
-      nodeId: "rfp",
+      id: requestId,
+      nodeId: requestNodeId,
       parentRefs: [rfxContentId],
       payload: {
         kind: "client_request",
-        requestKind: "rfp",
+        requestKind: requestNodeId,
         workflowId,
       },
       asOf: firstTime(allRecords, rfxSourceIds),
@@ -554,17 +391,17 @@ function buildClusterEntities(
       material: cluster.material,
       workflowId,
       status: "requested",
-      summary: `${cluster.supplier} content is attached to an RFx workflow.`,
+      summary: `${cluster.supplier} content is attached to a ${requestKindLabel(requestKind)} workflow.`,
     }),
     entity({
       id: boundaryId,
       nodeId: "supplier_boundary",
-      parentRefs: [rfpId],
+      parentRefs: [requestId],
       payload: {
         kind: "supplier_boundary",
         supplierId: cluster.supplierId,
         sourcingProcessRef: rfxContentId,
-        clientRequestRef: rfpId,
+        clientRequestRef: requestId,
         enteredBoundaryAt: firstTime(allRecords, rfxSourceIds),
       },
       asOf: firstTime(allRecords, rfxSourceIds),

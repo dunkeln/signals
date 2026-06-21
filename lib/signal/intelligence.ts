@@ -16,8 +16,14 @@ import type {
  * new source normalizer.
  */
 export type TelemetryKind = "log" | "metric" | "trace" | "event";
-type JsonScalar = string | number | boolean | null;
-export type AttributeValue = JsonScalar | JsonScalar[];
+export type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+export type AttributeValue = JsonValue;
 
 export interface SourceRecord {
   id: string;
@@ -117,8 +123,8 @@ export function buildSignalIntelligenceState(
  *
  * The IDs produced here are the durable join keys for later chart and operating
  * map projections. If a new ingress family is added, extend this function with
- * a source-specific normalizer and keep attributes scalar/array-only so Zod,
- * renderers, and LLM chart generation can safely consume them.
+ * a source-specific normalizer and keep attributes JSON-serializable. Later
+ * layers decide which attributes are chartable.
  */
 export function collectSourceRecords(ingress: AcmeBaseSandbox): SourceRecord[] {
   return [
@@ -186,13 +192,9 @@ function normalizeAttributes(
 
 function normalizeValue(value: unknown): AttributeValue {
   if (Array.isArray(value)) {
-    return value.map(toScalar);
+    return value.map(normalizeValue);
   }
 
-  return toScalar(value);
-}
-
-function toScalar(value: unknown): JsonScalar {
   if (
     typeof value === "string" ||
     typeof value === "number" ||
@@ -200,6 +202,15 @@ function toScalar(value: unknown): JsonScalar {
     value === null
   ) {
     return value;
+  }
+
+  if (typeof value === "object" && value !== undefined) {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
+        key,
+        normalizeValue(nested),
+      ]),
+    );
   }
 
   return String(value);
@@ -228,9 +239,13 @@ function readableRefs(record: SourceRecord) {
     .join("; ");
 }
 
-function formatValue(value: AttributeValue) {
+function formatValue(value: AttributeValue): string {
   if (Array.isArray(value)) {
-    return value.join(", ");
+    return value.map(formatValue).join(", ");
+  }
+
+  if (value && typeof value === "object") {
+    return JSON.stringify(value);
   }
 
   return String(value);

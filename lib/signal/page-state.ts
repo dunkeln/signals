@@ -1,13 +1,11 @@
 import type { FixtureRoute } from "@/lib/fixtures/registry";
 import {
   buildChartProtocolState,
-  type ChartInstruction,
   type ChartProtocolState,
   type GeneratedChartDataset,
 } from "@/lib/protocol/v0";
 import {
   buildSignalCanonicalState,
-  type SignalCanonicalState,
 } from "@/lib/signal/canonical-state";
 import {
   buildSignalIntelligenceState,
@@ -23,20 +21,14 @@ export interface SignalPageState {
     slug: string;
     label: string;
   };
+  document: {
+    title: string;
+  };
   signal: SignalIntelligenceState;
-  canonical: SignalCanonicalState;
   workflowMap: SignalWorkflowMapData;
   chartProtocol: ChartProtocolState;
-  generatedChartInstruction: ChartInstruction | null;
   generatedChartData: GeneratedChartDataset | null;
-  runtimeError: SignalRuntimeError | null;
-}
-
-export interface SignalRuntimeError {
-  id: string;
-  title: string;
-  message: string;
-  detail?: string;
+  runtimeErrorMessage: string | null;
 }
 
 export type SignalFixtureRoute = FixtureRoute & {
@@ -48,19 +40,22 @@ export async function buildSignalPageState(
 ): Promise<SignalPageState> {
   const signal = buildSignalIntelligenceState(fixtureRoute.ingress);
   const canonical = buildSignalCanonicalState(fixtureRoute.ingress);
-  const workflowMap = buildSignalWorkflowMap(canonical);
+  const workflowMap = buildSignalWorkflowMap(canonical.packetSets, {
+    clientLabel: fixtureRoute.label,
+  });
 
   return {
     client: {
       slug: fixtureRoute.slug,
       label: fixtureRoute.label,
     },
+    document: {
+      title: fixtureRoute.label,
+    },
     signal,
-    canonical,
     workflowMap,
     chartProtocol: buildChartProtocolState(),
-    generatedChartInstruction: null,
     generatedChartData: null,
-    runtimeError: null,
+    runtimeErrorMessage: null,
   };
 }

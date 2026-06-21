@@ -27,6 +27,9 @@ const runtimeWorkflowLinkSchema = z.object({
   status: z.string().min(1).optional(),
   ownerRole: z.string().min(1).optional(),
   support: z.enum(["strong", "partial"]),
+  timeBucket: z.string().min(1),
+  businessTimeSlice: z.string().min(1),
+  businessTimeOrder: z.number().finite(),
 });
 
 const runtimeEvidenceItemSchema = z.object({
@@ -57,7 +60,6 @@ const candidateReductionSchema = z.object({
     measure: z.enum(["packet_value", "packet_count"]),
     splitBy: z.string().min(1).optional(),
   }),
-  fit: z.string().min(1),
 });
 
 export const runtimeInputSchema = z.object({
@@ -69,6 +71,11 @@ export const runtimeInputSchema = z.object({
     client: z.object({
       slug: z.string().min(1),
       label: z.string().min(1),
+    }),
+    currentTime: z.object({
+      timeZone: z.literal("America/Los_Angeles"),
+      utcIso: z.string().min(1),
+      pacificLabel: z.string().min(1),
     }),
     chartProtocol: z.custom<ChartProtocolState>(),
     workflowMap: z.object({
@@ -112,6 +119,9 @@ export interface ProtocolWorkflowLink {
   status?: string;
   ownerRole?: string;
   support: "strong" | "partial";
+  timeBucket: string;
+  businessTimeSlice: string;
+  businessTimeOrder: number;
 }
 
 export interface ProtocolEvidenceItem {
@@ -141,8 +151,6 @@ export interface RuntimeContextPackInput {
   };
 }
 
-export type ChartContextToolInput = RuntimeContextPackInput;
-
 const reductionFields: ReductionField[] = [
   "source.label",
   "target.label",
@@ -151,6 +159,8 @@ const reductionFields: ReductionField[] = [
   "contentKind",
   "contentLabel",
   "support",
+  "timeBucket",
+  "businessTimeSlice",
 ];
 
 const defaultLimits = {
@@ -194,6 +204,7 @@ export function buildRuntimeContextPack({
     request,
     context: {
       client,
+      currentTime: currentPacificTime(),
       chartProtocol,
       workflowMap: {
         nodes: workflowMap.nodes,
@@ -225,7 +236,7 @@ export function serializeRuntimeInput(input: RuntimeInput): string {
   return JSON.stringify(runtimeInputSchema.parse(input), null, 2);
 }
 
-export function createChartContextTool(input: ChartContextToolInput) {
+export function createChartContextTool(input: RuntimeContextPackInput) {
   return tool({
     name: "get_chart_context",
     description:
@@ -239,7 +250,7 @@ function buildCandidateReductions() {
   return [
     {
       id: "volume_by_target",
-      title: "Packet Volume by Receiving Workspace",
+      title: "Packet Volume by Receiver",
       chartKind: "stacked_bar",
       sourceDatasetIds: ["workflow_map"],
       reduction: {
@@ -248,19 +259,6 @@ function buildCandidateReductions() {
         measure: "packet_value",
         splitBy: "status",
       },
-      fit: "Compare content packet volume by the client workspace or counterparty receiving it.",
-    },
-    {
-      id: "count_by_target",
-      title: "Packet Count by Receiving Workspace",
-      chartKind: "bar",
-      sourceDatasetIds: ["workflow_map"],
-      reduction: {
-        source: "workflow_map.links",
-        groupBy: ["target.label"],
-        measure: "packet_count",
-      },
-      fit: "Count distinct supplier-content links by receiving workspace or counterparty.",
     },
     {
       id: "composition_by_content",
@@ -272,7 +270,17 @@ function buildCandidateReductions() {
         groupBy: ["contentLabel"],
         measure: "packet_value",
       },
-      fit: "Show supplier content packet volume as a composition by content label.",
+    },
+    {
+      id: "volume_by_time",
+      title: "Packet Volume by Time",
+      chartKind: "bar",
+      sourceDatasetIds: ["workflow_map"],
+      reduction: {
+        source: "workflow_map.links",
+        groupBy: ["businessTimeSlice"],
+        measure: "packet_value",
+      },
     },
     {
       id: "volume_by_content",
@@ -285,33 +293,6 @@ function buildCandidateReductions() {
         measure: "packet_value",
         splitBy: "status",
       },
-      fit: "Compare RFx, quote, document, and certification packet volume without merging content kinds.",
-    },
-    {
-      id: "support_by_content_kind",
-      title: "Packet Support by Content Kind",
-      chartKind: "stacked_bar",
-      sourceDatasetIds: ["workflow_map"],
-      reduction: {
-        source: "workflow_map.links",
-        groupBy: ["contentKind"],
-        measure: "packet_count",
-        splitBy: "support",
-      },
-      fit: "Show which content kinds are strongly or partially supported by evidence.",
-    },
-    {
-      id: "volume_by_owner",
-      title: "Packet Volume by Owner Role",
-      chartKind: "stacked_bar",
-      sourceDatasetIds: ["workflow_map"],
-      reduction: {
-        source: "workflow_map.links",
-        groupBy: ["ownerRole"],
-        measure: "packet_value",
-        splitBy: "status",
-      },
-      fit: "Compare packet volume by surfaced owner or review role.",
     },
   ] satisfies Array<{
     id: string;
@@ -324,7 +305,6 @@ function buildCandidateReductions() {
       measure: ChartInstruction["reduction"]["measure"];
       splitBy?: ChartInstruction["reduction"]["splitBy"];
     };
-    fit: string;
   }>;
 }
 
@@ -343,6 +323,9 @@ function compactRuntimeLink(
     status: link.status,
     ownerRole: link.ownerRole,
     support: link.support,
+    timeBucket: link.timeBucket,
+    businessTimeSlice: link.businessTimeSlice,
+    businessTimeOrder: link.businessTimeOrder,
   };
 }
 
@@ -389,5 +372,23 @@ function fieldValues(
       return [link.contentLabel];
     case "support":
       return [link.support];
+    case "timeBucket":
+      return [link.timeBucket];
+    case "businessTimeSlice":
+      return [link.businessTimeSlice];
   }
+}
+
+function currentPacificTime() {
+  const now = new Date();
+
+  return {
+    timeZone: "America/Los_Angeles" as const,
+    utcIso: now.toISOString(),
+    pacificLabel: new Intl.DateTimeFormat("en-US", {
+      timeZone: "America/Los_Angeles",
+      dateStyle: "medium",
+      timeStyle: "short",
+    }).format(now),
+  };
 }

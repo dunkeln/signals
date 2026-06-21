@@ -12,6 +12,8 @@ const reductionFieldSchema = z.enum([
   "contentKind",
   "contentLabel",
   "support",
+  "timeBucket",
+  "businessTimeSlice",
 ]);
 
 const filterValueSchema = z.union([
@@ -29,7 +31,7 @@ export const chartInstructionSchema = z.object({
   protocolVersion: z.literal(protocolVersion),
   title: z.string().min(1).max(80),
   chartKind: z.enum(["bar", "stacked_bar", "donut"]),
-  sourceDatasetIds: z.array(instructionSourceDatasetIdSchema).min(1).max(2),
+  sourceDatasetIds: z.array(instructionSourceDatasetIdSchema).length(1),
   reduction: z.object({
     source: z.literal("workflow_map.links"),
     groupBy: z.array(reductionFieldSchema).min(1).max(2),

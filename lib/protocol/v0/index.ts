@@ -18,7 +18,6 @@ export {
   createChartContextTool,
   runtimeInputSchema,
   serializeRuntimeInput,
-  type ChartContextToolInput,
   type ProtocolEvidenceItem,
   type ProtocolWorkflowLink,
   type ProtocolWorkflowNode,

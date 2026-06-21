@@ -1,8 +1,8 @@
 "use client";
 
 import * as React from "react";
-import { defineRegistry, useStateStore, useStateValue } from "@json-render/react";
-import { InfoIcon, PencilIcon } from "lucide-react";
+import { defineRegistry, useStateValue } from "@json-render/react";
+import { InfoIcon } from "lucide-react";
 import { SankeyDiagram } from "semiotic/network";
 import { BarChart, DonutChart, StackedBarChart } from "semiotic/ordinal";
 
@@ -12,7 +12,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import type { ChartInstruction, GeneratedChartDataset } from "@/lib/protocol/v0";
+import type { GeneratedChartDataset } from "@/lib/protocol/v0";
 import type {
   SignalEvidenceRow,
 } from "@/lib/signal/intelligence";
@@ -32,33 +32,68 @@ interface DataPathProps {
   title?: string;
 }
 
+type TimeSliceOption = {
+  id: string;
+  label: string;
+  order: number;
+};
+
+const TimeSliceContext = React.createContext<string>("all");
+
 const { registry: signalRegistry } = defineRegistry(signalCatalog, {
   components: {
-    Frame: ({ props, children }) => (
-      <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 pb-8">
-        <div>
-          <h1 className="inline-flex items-start gap-1.5 text-xl font-semibold text-foreground">
-            <span>{props.title}</span>
-            {props.description ? (
-              <TitleDescriptionInfo description={props.description} />
-            ) : null}
-          </h1>
+    Frame: ({ props, children }) => {
+      const workflowMap = useStateValue<SignalWorkflowMapData | undefined>("/workflowMap");
+      const options = React.useMemo(
+        () => buildTimeSliceOptions(workflowMap?.links ?? []),
+        [workflowMap],
+      );
+      const [selectedSlice, setSelectedSlice] = React.useState("all");
+
+      React.useEffect(() => {
+        if (selectedSlice !== "all" && !options.some((option) => option.id === selectedSlice)) {
+          setSelectedSlice("all");
+        }
+      }, [options, selectedSlice]);
+
+      return (
+        <div className="mx-auto flex w-full max-w-4xl flex-col gap-7 pb-8">
+          <div>
+            <h1 className="inline-flex items-start gap-1.5 text-xl font-semibold text-foreground">
+              <span>{props.title}</span>
+              {props.description ? (
+                <TitleDescriptionInfo description={props.description} />
+              ) : null}
+            </h1>
+            <TimeSliceControls
+              options={options}
+              selectedSlice={selectedSlice}
+              onSelect={setSelectedSlice}
+            />
+          </div>
+          <TimeSliceContext.Provider value={selectedSlice}>
+            <div className="grid gap-x-8 gap-y-7 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
+              {children}
+            </div>
+          </TimeSliceContext.Provider>
         </div>
-        <div className="grid gap-x-8 gap-y-7 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
-          {children}
-        </div>
-      </div>
-    ),
+      );
+    },
     WorkflowMapSankey: ({ props }) => {
       const data = useChartData<SignalWorkflowMapData>(props);
+      const selectedSlice = React.useContext(TimeSliceContext);
+      const slicedData = React.useMemo(
+        () => filterWorkflowMapByTimeSlice(data, selectedSlice),
+        [data, selectedSlice],
+      );
 
       return (
         <section
-          aria-label={props.title ?? "Supplier Content Flow"}
+          aria-label={props.title ?? "Procurement Coordination Map"}
           className="semiotic-signal-chart min-w-0 text-foreground lg:col-span-2"
         >
           <ClientOnlyChart>
-            <SemioticWorkflowMapSankey data={data} />
+            <SemioticWorkflowMapSankey data={slicedData} />
           </ClientOnlyChart>
         </section>
       );
@@ -107,131 +142,137 @@ const { registry: signalRegistry } = defineRegistry(signalCatalog, {
       );
     },
     GeneratedBarChart: ({ props }) => {
-      const { set } = useStateStore();
       const dataset = useChartData<GeneratedChartDataset | null>(props);
-      const instruction = useStateValue<ChartInstruction | null>(
-        "/generatedChartInstruction",
-      );
 
       if (!dataset) {
         return null;
       }
 
-      const measureKeys = measureKeysForDataset(dataset);
-      const rows = dataset.rows.map((row) => ({
-        label: row.label,
-        value: row.measures[measureKeys[0] ?? ""] ?? 0,
-        ...Object.fromEntries(
-          measureKeys.map((key) => [key, row.measures[key] ?? 0]),
-        ),
-      }));
-      const stackedRows = dataset.rows.flatMap((row) =>
-        measureKeys.map((key) => ({
-          label: row.label,
-          measure: key,
-          value: row.measures[key] ?? 0,
-        })),
-      );
-      const isStacked = dataset.chartKind === "stacked_bar" && measureKeys.length > 1;
-      const isDonut = dataset.chartKind === "donut";
-
-      return (
-        <section className="semiotic-signal-chart min-w-0 text-foreground lg:col-span-2">
-          <EditableGeneratedChartHeader
-            title={dataset.title || props.title || "Generated Chart"}
-            onCommit={(title) => {
-              set(props.dataPath, { ...dataset, title });
-
-              if (instruction) {
-                set("/generatedChartInstruction", { ...instruction, title });
-              }
-            }}
-          />
-          <div className="h-72 overflow-x-auto overflow-y-hidden">
-            <ClientOnlyChart>
-              {isDonut ? (
-                <DonutChart
-                  data={rows}
-                  width={760}
-                  height={288}
-                  margin={{ top: 8, right: 120, bottom: 8, left: 120 }}
-                  categoryAccessor="label"
-                  valueAccessor="value"
-                  colorBy="label"
-                  colorScheme={generatedBarColors}
-                  innerRadius={66}
-                  cornerRadius={3}
-                  showLegend={false}
-                  showCategoryTicks
-                  enableHover
-                  accessibleTable={false}
-                  frameProps={{
-                    pieceStyle: (datum) => ({
-                      stroke: "var(--background)",
-                      lineWidth: 1,
-                      fill: generatedBarColor(String(datum.label)),
-                    }),
-                  }}
-                />
-              ) : isStacked ? (
-                <StackedBarChart
-                  data={stackedRows}
-                  width={760}
-                  height={288}
-                  margin={{ top: 10, right: 16, bottom: 54, left: 36 }}
-                  categoryAccessor="label"
-                  valueAccessor="value"
-                  stackBy="measure"
-                  colorBy="measure"
-                  colorScheme={generatedBarColors}
-                  sort={false}
-                  showGrid
-                  showLegend={false}
-                  roundedTop={3}
-                  enableHover
-                  accessibleTable={false}
-                  frameProps={{
-                    pieceStyle: (datum) => ({
-                      stroke: "var(--background)",
-                      lineWidth: 1,
-                      fill: generatedBarColor(String(datum.measure)),
-                    }),
-                  }}
-                />
-              ) : (
-                <BarChart
-                  data={rows}
-                  width={760}
-                  height={288}
-                  margin={{ top: 10, right: 16, bottom: 54, left: 36 }}
-                  categoryAccessor="label"
-                  valueAccessor="value"
-                  color={generatedBarColors[0]}
-                  sort={false}
-                  showGrid
-                  showLegend={false}
-                  roundedTop={3}
-                  gradientFill={false}
-                  enableHover
-                  accessibleTable={false}
-                  frameProps={{
-                    pieceStyle: () => ({
-                      stroke: "var(--background)",
-                      lineWidth: 1,
-                      fill: generatedBarColors[0],
-                    }),
-                  }}
-                />
-              )}
-            </ClientOnlyChart>
-          </div>
-        </section>
-      );
+      return <GeneratedChartView dataset={dataset} title={props.title} />;
     },
   },
 });
 
 export { signalRegistry };
+
+export function GeneratedChartView({
+  dataset,
+  title,
+  onTitleChange,
+}: {
+  dataset: GeneratedChartDataset;
+  title?: string;
+  onTitleChange?: (title: string) => void;
+}) {
+  const measureKeys = measureKeysForDataset(dataset);
+  const rows = dataset.rows.map((row) => ({
+    label: row.label,
+    value: row.measures[measureKeys[0] ?? ""] ?? 0,
+    ...Object.fromEntries(
+      measureKeys.map((key) => [key, row.measures[key] ?? 0]),
+    ),
+  }));
+  const stackedRows = dataset.rows.flatMap((row) =>
+    measureKeys.map((key) => ({
+      label: row.label,
+      measure: key,
+      value: row.measures[key] ?? 0,
+    })),
+  );
+  const isStacked = dataset.chartKind === "stacked_bar" && measureKeys.length > 1;
+  const isDonut = dataset.chartKind === "donut";
+
+  return (
+    <section className="semiotic-signal-chart min-w-0 text-foreground lg:col-span-2">
+      {onTitleChange ? (
+        <EditableChartHeader
+          title={dataset.title || title || "Generated Chart"}
+          onTitleChange={onTitleChange}
+        />
+      ) : (
+        <ChartHeader title={dataset.title || title || "Generated Chart"} />
+      )}
+      <div className="h-72 overflow-x-auto overflow-y-hidden">
+        <ClientOnlyChart>
+          {isDonut ? (
+            <DonutChart
+              data={rows}
+              width={760}
+              height={288}
+              margin={{ top: 8, right: 120, bottom: 8, left: 120 }}
+              categoryAccessor="label"
+              valueAccessor="value"
+              colorBy="label"
+              colorScheme={generatedBarColors}
+              innerRadius={66}
+              cornerRadius={3}
+              showLegend={false}
+              showCategoryTicks
+              enableHover
+              accessibleTable={false}
+              frameProps={{
+                pieceStyle: (datum) => ({
+                  stroke: "var(--background)",
+                  lineWidth: 1,
+                  fill: generatedBarColor(String(datum.label)),
+                }),
+              }}
+            />
+          ) : isStacked ? (
+            <StackedBarChart
+              data={stackedRows}
+              width={760}
+              height={288}
+              margin={{ top: 10, right: 16, bottom: 54, left: 36 }}
+              categoryAccessor="label"
+              valueAccessor="value"
+              stackBy="measure"
+              colorBy="measure"
+              colorScheme={generatedBarColors}
+              sort={false}
+              showGrid
+              showLegend={false}
+              roundedTop={3}
+              enableHover
+              accessibleTable={false}
+              frameProps={{
+                pieceStyle: (datum) => ({
+                  stroke: "var(--background)",
+                  lineWidth: 1,
+                  fill: generatedBarColor(String(datum.measure)),
+                }),
+              }}
+            />
+          ) : (
+            <BarChart
+              data={rows}
+              width={760}
+              height={288}
+              margin={{ top: 10, right: 16, bottom: 54, left: 36 }}
+              categoryAccessor="label"
+              valueAccessor="value"
+              color={generatedBarColors[0]}
+              sort={false}
+              showGrid
+              showLegend={false}
+              roundedTop={3}
+              gradientFill={false}
+              enableHover
+              accessibleTable={false}
+              frameProps={{
+                pieceStyle: () => ({
+                  stroke: "var(--background)",
+                  lineWidth: 1,
+                  fill: generatedBarColors[0],
+                }),
+              }}
+            />
+          )}
+        </ClientOnlyChart>
+      </div>
+    </section>
+  );
+}
 
 function TitleDescriptionInfo({ description }: { description: string }) {
   return (
@@ -254,6 +295,64 @@ function TitleDescriptionInfo({ description }: { description: string }) {
   );
 }
 
+function TimeSliceControls({
+  options,
+  selectedSlice,
+  onSelect,
+}: {
+  options: TimeSliceOption[];
+  selectedSlice: string;
+  onSelect: (slice: string) => void;
+}) {
+  if (options.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-4 flex flex-wrap items-center gap-1.5">
+      <TimeSliceButton
+        label="All"
+        active={selectedSlice === "all"}
+        onClick={() => onSelect("all")}
+      />
+      {options.map((option) => (
+        <TimeSliceButton
+          key={option.id}
+          label={option.label}
+          active={selectedSlice === option.id}
+          onClick={() => onSelect(option.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TimeSliceButton({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={[
+        "h-7 min-w-7 border px-2 text-xs font-medium transition-colors",
+        active
+          ? "border-foreground bg-foreground text-background"
+          : "border-border bg-background text-muted-foreground hover:border-foreground hover:text-foreground",
+      ].join(" ")}
+    >
+      {label}
+    </button>
+  );
+}
+
 function ChartHeader({ title }: { title: string }) {
   return (
     <div className="mb-3">
@@ -262,78 +361,85 @@ function ChartHeader({ title }: { title: string }) {
   );
 }
 
-function EditableGeneratedChartHeader({
+function EditableChartHeader({
   title,
-  onCommit,
+  onTitleChange,
 }: {
   title: string;
-  onCommit: (title: string) => void;
+  onTitleChange: (title: string) => void;
 }) {
-  const [isEditing, setIsEditing] = React.useState(false);
-  const [draft, setDraft] = React.useState(title);
-
-  function commitTitle() {
-    const nextTitle = draft.trim();
-    setIsEditing(false);
+  function commit(target: HTMLInputElement) {
+    const nextTitle = target.value.trim();
 
     if (nextTitle.length > 0 && nextTitle !== title) {
-      onCommit(nextTitle);
+      target.value = nextTitle;
+      onTitleChange(nextTitle);
     } else {
-      setDraft(title);
+      target.value = title;
     }
   }
 
-  function cancelEdit() {
-    setDraft(title);
-    setIsEditing(false);
-  }
-
-  if (isEditing) {
-    return (
-      <form
-        className="mb-3"
-        onSubmit={(event) => {
-          event.preventDefault();
-          commitTitle();
-        }}
-      >
-        <input
-          autoFocus
-          aria-label="Generated chart title"
-          value={draft}
-          onBlur={commitTitle}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape") {
-              event.preventDefault();
-              cancelEdit();
-            } else if (event.key === "Enter") {
-              event.preventDefault();
-              commitTitle();
-            }
-          }}
-          className="h-6 w-full max-w-sm rounded-sm border border-border bg-background px-1.5 text-sm font-medium text-foreground outline-none focus-visible:border-ring focus-visible:ring-2 focus-visible:ring-ring/30"
-        />
-      </form>
-    );
-  }
-
   return (
-    <div className="mb-3 flex items-center gap-1.5">
-      <h2 className="text-sm font-medium text-foreground">{title}</h2>
-      <button
-        type="button"
-        aria-label="Edit generated chart title"
-        onClick={() => {
-          setDraft(title);
-          setIsEditing(true);
+    <div className="mb-3">
+      <input
+        aria-label="Generated chart title"
+        defaultValue={title}
+        onBlur={(event) => commit(event.currentTarget)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== "Escape") {
+            return;
+          }
+
+          event.preventDefault();
+          commit(event.currentTarget);
+          event.currentTarget.blur();
         }}
-        className="inline-flex size-5 items-center justify-center rounded-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:text-foreground focus-visible:ring-2 focus-visible:ring-ring/40"
-      >
-        <PencilIcon className="size-3" />
-      </button>
+        className="h-6 w-full bg-transparent text-sm font-medium text-foreground outline-none"
+      />
     </div>
   );
+}
+
+function buildTimeSliceOptions(links: SignalWorkflowMapLink[]) {
+  const optionMap = new Map<string, TimeSliceOption>();
+
+  for (const link of links) {
+    optionMap.set(link.businessTimeSlice, {
+      id: link.businessTimeSlice,
+      label: link.businessTimeSlice,
+      order: link.businessTimeOrder,
+    });
+  }
+
+  return Array.from(optionMap.values()).sort(
+    (left, right) => left.order - right.order,
+  );
+}
+
+function filterWorkflowMapByTimeSlice(
+  data: SignalWorkflowMapData,
+  selectedSlice: string,
+): SignalWorkflowMapData {
+  if (selectedSlice === "all") {
+    return data;
+  }
+
+  const options = buildTimeSliceOptions(data.links);
+  const option = options.find((candidate) => candidate.id === selectedSlice);
+
+  if (!option) {
+    return data;
+  }
+
+  const links = data.links.filter(
+    (link) => link.businessTimeSlice === option.id,
+  );
+  const nodeIds = new Set(links.flatMap((link) => [link.source, link.target]));
+
+  return {
+    nodes: data.nodes.filter((node) => nodeIds.has(node.id)),
+    links,
+  };
 }
 
 function ClientOnlyChart({ children }: { children: React.ReactNode }) {
@@ -429,8 +535,30 @@ function SemioticWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
           },
         }}
         tooltip={(datum) => {
-          const edge =
-            dataFromSemioticWrapper<Partial<SignalWorkflowMapLink>>(datum);
+          const item = dataFromSemioticWrapper<
+            Partial<SignalWorkflowMapLink & SignalWorkflowMapNode>
+          >(datum);
+          const blockedLinks =
+            "id" in item
+              ? data.links.filter(
+                  (link) => link.target === item.id && link.status === "blocked",
+                )
+              : [];
+          const edge = item as Partial<SignalWorkflowMapLink>;
+
+          if (blockedLinks.length > 0) {
+            return (
+              <div className="max-w-56 text-xs text-foreground">
+                <div className="font-medium">Blocked for {item.label}</div>
+                <div className="mt-1 text-muted-foreground">
+                  {blockedLinks
+                    .map(blockingReason)
+                    .filter(Boolean)
+                    .join(", ")}
+                </div>
+              </div>
+            );
+          }
 
           return (
             <div className="text-xs font-medium text-foreground">
@@ -441,6 +569,15 @@ function SemioticWorkflowMapSankey({ data }: { data: SignalWorkflowMapData }) {
       />
     </div>
   );
+}
+
+function blockingReason(link: SignalWorkflowMapLink) {
+  const reason =
+    stringAttribute(link.attributes.blocked_by) ??
+    stringAttribute(link.attributes["edge.blocked_by"]) ??
+    stringAttribute(link.attributes.missing_document_type);
+
+  return reason?.replaceAll("_", " ");
 }
 
 function workflowStatusColor(status?: SignalWorkflowMapLink["status"]) {
@@ -473,6 +610,10 @@ function dataFromSemioticWrapper<Value>(datum: unknown): Value {
   }
 
   return datum as Value;
+}
+
+function stringAttribute(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
 function useChartData<Value>(props: DataPathProps): Value {

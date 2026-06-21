@@ -20,7 +20,6 @@ const chartComponentSchema = z.enum([
 
 export const protocolDatasetIdSchema = z.enum([
   "source_evidence",
-  "canonical_entities",
   "workflow_map",
   "generated_chart",
 ]);
@@ -46,7 +45,7 @@ export type ChartIntent = z.infer<typeof chartIntentSchema>;
 export interface ProtocolDataset {
   id: ProtocolDatasetId;
   statePath: string;
-  sourceLayer: "raw_substrate" | "canonical_state" | "generated_chart_data";
+  sourceLayer: "raw_substrate" | "packet_set" | "generated_chart_data";
   allowedComponents: ChartComponent[];
   purpose: string;
   evidenceDataset?: ProtocolDatasetId;
@@ -70,18 +69,9 @@ const datasets: ProtocolDataset[] = [
     purpose: "Show source records and references behind the rendered charts.",
   },
   {
-    id: "canonical_entities",
-    statePath: "/canonical/entities",
-    sourceLayer: "canonical_state",
-    allowedComponents: [],
-    purpose:
-      "Expose canonical entity instances with parentRefs and source evidence; renderable only through derived chart datasets.",
-    evidenceDataset: "source_evidence",
-  },
-  {
     id: "workflow_map",
     statePath: "/workflowMap",
-    sourceLayer: "canonical_state",
+    sourceLayer: "packet_set",
     allowedComponents: ["WorkflowMapSankey"],
     purpose:
       "Render deterministic supplier-content flow; nodes are client roles and supplier counterparties, while links are glossary-backed content packets with evidence state as visual metadata.",
@@ -131,7 +121,7 @@ export function buildDefaultChartIntents(): ChartIntent[] {
       id: "workflow_map",
       component: "WorkflowMapSankey",
       dataset: "workflow_map",
-      title: "Supplier Content Flow",
+      title: "Procurement Coordination Map",
       rationale:
         "Show supplier content packets exchanged between the client role work surfaces and supplier counterparty.",
       evidenceDataset: "source_evidence",
@@ -168,12 +158,12 @@ export function compileChartSpec(
     root: "frame",
     elements: {
       frame: {
-        type: "Frame",
-        props: {
-          title: "Supplier Content Flow",
-          description:
-            "Supplier request and return packets, split by the client workspace that owns each received content type.",
-        },
+      type: "Frame",
+      props: {
+        title: "Procurement Coordination Map",
+        description:
+            "Supplier request and return packets, split by the client role surface that owns each received content type.",
+      },
         children,
       },
       ...Object.fromEntries(

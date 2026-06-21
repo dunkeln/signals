@@ -8,17 +8,11 @@ import {
   chartInstructionSchema,
   createChartContextTool,
   parseChartInstruction,
-  type ChartContextToolInput,
   type ChartRuntimeResult,
 } from "@/lib/protocol/v0";
 import { buildSignalCanonicalState } from "@/lib/signal/canonical-state";
 import { buildSignalIntelligenceState } from "@/lib/signal/intelligence";
 import { buildSignalWorkflowMap } from "@/lib/signal/workflow-map";
-
-export interface SignalAgentRuntimeInput {
-  fixtureRoute: FixtureRoute & { ingress: NonNullable<FixtureRoute["ingress"]> };
-  message: string;
-}
 
 export type SignalAgentRuntimeResponse = ChartRuntimeResult;
 
@@ -30,15 +24,21 @@ const runtimePrompt = readFileSync(
 export async function runSignalAgent({
   fixtureRoute,
   message,
-}: SignalAgentRuntimeInput): Promise<SignalAgentRuntimeResponse> {
+}: {
+  fixtureRoute: FixtureRoute & { ingress: NonNullable<FixtureRoute["ingress"]> };
+  message: string;
+}): Promise<SignalAgentRuntimeResponse> {
   if (!process.env.OPENAI_API_KEY) {
     throw new Error("Signal agent runtime requires OPENAI_API_KEY.");
   }
 
-  const agent = new Agent<
-    unknown,
-    typeof chartInstructionSchema
-  >({
+  const signal = buildSignalIntelligenceState(fixtureRoute.ingress);
+  const canonical = buildSignalCanonicalState(fixtureRoute.ingress);
+  const workflowMap = buildSignalWorkflowMap(canonical.packetSets, {
+    clientLabel: fixtureRoute.label,
+  });
+
+  const agent = new Agent<unknown, typeof chartInstructionSchema>({
     name: "Chart instruction runtime",
     instructions: runtimePrompt,
     model: process.env.OPENAI_SIGNAL_AGENT_MODEL ?? "gpt-4.1-mini",
@@ -46,10 +46,24 @@ export async function runSignalAgent({
       toolChoice: "get_chart_context",
     },
     outputType: chartInstructionSchema,
-    tools: [createChartContextTool(buildChartContextToolInput({
-      fixtureRoute,
-      message,
-    }))],
+    tools: [
+      createChartContextTool({
+        request: {
+          message,
+        },
+        client: {
+          slug: fixtureRoute.slug,
+          label: fixtureRoute.label,
+        },
+        chartProtocol: buildChartProtocolState(),
+        workflowMap,
+        evidenceItems: signal.evidenceRows.map((row) => ({
+          kind: row.kind,
+          lane: row.lane,
+          summary: row.summary,
+        })),
+      }),
+    ],
   });
 
   const result = await run(agent, message, { maxTurns: 3 });
@@ -61,31 +75,5 @@ export async function runSignalAgent({
   return {
     kind: "chart_instruction",
     instruction: parseChartInstruction(result.finalOutput),
-  };
-}
-
-function buildChartContextToolInput({
-  fixtureRoute,
-  message,
-}: SignalAgentRuntimeInput): ChartContextToolInput {
-  const signal = buildSignalIntelligenceState(fixtureRoute.ingress);
-  const canonical = buildSignalCanonicalState(fixtureRoute.ingress);
-  const workflowMap = buildSignalWorkflowMap(canonical);
-
-  return {
-    request: {
-      message,
-    },
-    client: {
-      slug: fixtureRoute.slug,
-      label: fixtureRoute.label,
-    },
-    chartProtocol: buildChartProtocolState(),
-    workflowMap,
-    evidenceItems: signal.evidenceRows.map((row) => ({
-      kind: row.kind,
-      lane: row.lane,
-      summary: row.summary,
-    })),
   };
 }

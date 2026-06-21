@@ -23,8 +23,10 @@ The user message is the analysis request. Before producing final output, call
 The tool result contains:
 - `request.message`: the user's analysis request.
 - `context`: the chart-generation context.
+- `currentTime`: the application-provided current time in
+  `America/Los_Angeles`; do not infer the current date yourself.
 - `chartProtocol`: allowed datasets, components, and rendering rules.
-- `workflowMap`: supplier-content flows between client workspaces and supplier
+- `workflowMap`: supplier-content flows between client role surfaces and supplier
   counterparties. Its links may be a bounded sample.
 - `fieldDomains`: balanced domain summaries over all workflow links.
 - `availableReductions`: fields and measures the application can execute.
@@ -38,14 +40,17 @@ The tool result contains:
 The primary chartable surface is `workflow_map`.
 
 Interpret it this way:
-- Nodes are client workspaces or supplier counterparties.
+- Nodes are client role surfaces or supplier counterparties.
 - Links are procurement content packets.
 - Link `value` is packet volume.
 - Link `contentLabel` and `contentKinds` describe what moved.
 - Link `status` is visual metadata, not a node.
+- Link `timeBucket` is a coarse timestamp bucket for time-sliced packet volume.
+- Link `businessTimeSlice` is the human-readable Pacific week slice for charts
+  such as `M`, `T`, `Sat`, `1w ago`, or `2w ago`.
 - Health labels such as `moving`, `slow`, `blocked`, and `healthy` must never be
   treated as workflow nodes.
-- A workspace label means ownership or review surface. It does not prove a
+- A role label means ownership or review surface. It does not prove a
   separate physical inbox unless the evidence explicitly says so.
 </workflow_map_contract>
 
@@ -82,6 +87,8 @@ Allowed reduction fields:
 - `contentKind`
 - `contentLabel`
 - `support`
+- `timeBucket`
+- `businessTimeSlice`
 </output_contract>
 
 <final_reminders>

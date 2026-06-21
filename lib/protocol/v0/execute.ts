@@ -19,6 +19,9 @@ export interface ExecutableWorkflowLink {
   status?: string;
   ownerRole?: string;
   support: "strong" | "partial";
+  timeBucket: string;
+  businessTimeSlice: string;
+  businessTimeOrder: number;
   evidenceSourceIds: string[];
 }
 
@@ -72,10 +75,16 @@ export function executeChartInstruction({
     rowsByKey.set(rowId, row);
   }
 
-  const rows = Array.from(rowsByKey.values()).map((row) => ({
-    ...row,
-    evidenceSourceIds: unique(row.evidenceSourceIds),
-  }));
+  const rows = Array.from(rowsByKey.values())
+    .map((row) => ({
+      ...row,
+      evidenceSourceIds: unique(row.evidenceSourceIds),
+    }))
+    .sort((left, right) =>
+      instruction.reduction.groupBy.includes("businessTimeSlice")
+        ? timeOrder(left, workflowMap.links) - timeOrder(right, workflowMap.links)
+        : 0,
+    );
 
   if (rows.length === 0) {
     throw new Error("Chart instruction did not match any workflow links.");
@@ -144,7 +153,18 @@ function fieldValues(
       return [link.contentLabel];
     case "support":
       return [link.support];
+    case "timeBucket":
+      return [link.timeBucket];
+    case "businessTimeSlice":
+      return [link.businessTimeSlice];
   }
+}
+
+function timeOrder(row: GeneratedChartRow, links: ExecutableWorkflowLink[]) {
+  const label = String(row.dimensions.businessTimeSlice ?? row.label);
+  const matchingLink = links.find((link) => link.businessTimeSlice === label);
+
+  return matchingLink?.businessTimeOrder ?? 999;
 }
 
 function matchesFilter(
