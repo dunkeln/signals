@@ -56,3 +56,5 @@ next-env.d.ts
 !/AGENTS.md
 !/lib/protocol/
 !/lib/protocol/**/*.md
+!/skills/
+!/skills/**/*.md

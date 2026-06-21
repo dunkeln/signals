@@ -1,0 +1,4 @@
+interface:
+  display_name: "signals:logging"
+  short_description: "Workflow-safe Signal logging"
+  default_prompt: "Use $signals-logging to add non-blocking workflow boundary logs that Signal can ingest."

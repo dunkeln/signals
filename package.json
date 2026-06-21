@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "deploy": "node scripts/deploy.mjs",
     "start": "next start",
     "lint": "eslint",
     "mcp:stdio": "tsx mcp/stdio.ts"
