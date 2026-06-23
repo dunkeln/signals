@@ -2,7 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
-  defaultReportBlocks,
+  defaultReportBlocksForClient,
   fileToken,
   reportDocumentSchema,
   reportMarkdown,
@@ -24,7 +24,7 @@ export async function readReportDocument(
     if (isMissingFile(error)) {
       return withMarkdown({
         title: fallbackTitle,
-        blocks: defaultReportBlocks,
+        blocks: defaultReportBlocksForClient(clientSlug),
       });
     }
 

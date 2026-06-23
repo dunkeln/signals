@@ -1,6 +1,7 @@
 import "./globals.css";
 import { Geist } from "next/font/google";
 
+import { SiteAnnouncementBanner } from "@/components/site-announcement-banner";
 import { SiteBreadcrumb } from "@/components/site-breadcrumb";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,8 +18,9 @@ export default function RootLayout({
     <html lang="en" className={cn("font-sans", geist.variable)}>
       <body className="h-svh overflow-hidden">
         <TooltipProvider>
-          <main className="h-svh overflow-hidden bg-background text-foreground">
-            <div className="mx-auto flex h-full w-full max-w-5xl flex-col px-5 py-4 sm:px-8">
+          <main className="flex h-svh flex-col overflow-hidden bg-background text-foreground">
+            <SiteAnnouncementBanner />
+            <div className="mx-auto flex min-h-0 w-full max-w-5xl flex-1 flex-col px-5 py-4 sm:px-8">
               <header className="flex h-12 items-center justify-between">
                 <div className="flex items-center gap-3">
                   <SiteBreadcrumb />

@@ -5,6 +5,7 @@ import type { RawObservabilityFixture } from "@/lib/fixtures/raw-observability-t
 export interface FixtureRoute {
   slug: string;
   label: string;
+  aliases?: readonly string[];
   ingress?: RawObservabilityFixture;
 }
 
@@ -16,17 +17,23 @@ export const fixtureRoutes = [
   {
     slug: "acme-base-sandbox",
     label: acmeBaseSandbox.scenario.name,
+    aliases: ["acme"],
     ingress: acmeBaseSandbox,
   },
   {
     slug: "gold-coast-bakery-sandbox",
     label: goldCoastBakerySandbox.scenario.name,
+    aliases: ["gold-coast", "gold-coast-bakery"],
     ingress: goldCoastBakerySandbox,
   },
 ] satisfies FixtureRoute[];
 
 export function getFixtureRoute(slug: string) {
-  return fixtureRoutes.find((fixture) => fixture.slug === slug);
+  const token = slug.trim().toLowerCase();
+
+  return fixtureRoutes.find(
+    (fixture) => fixture.slug === token || fixture.aliases?.includes(token),
+  );
 }
 
 export function hasFixtureIngress(

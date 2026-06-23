@@ -28,13 +28,10 @@ export default function Home() {
 
   return (
     <div className="mx-auto w-full max-w-5xl">
-      <div className="mb-8">
-        <h1 className="text-3xl font-semibold tracking-normal">Signals</h1>
-        <p className="mt-2 max-w-xl text-sm italic">
-          Team alignment takes time. AI models in the loop, shared context is affordance more than an afterthought. Signals bundles product facing data, the real signals for teams to connect with client workflows just off the logs.
-          Product procurement workflows are another Graph representation, the boundaries build the communication tax. How do you close the loop? Let agents get context of the real signals from CPGs leveraging the AI workflows. Let the real signals dictate the slice to improve.
-          This is product improvement on real data.
-        </p>
+      <div className="mb-9">
+        <h1 className="max-w-4xl font-serif text-5xl font-medium leading-[1.02] tracking-normal sm:text-6xl">
+          See the coordination tax inside AI procurement workflows.
+        </h1>
       </div>
       <HomeAgentAffordances />
       <HomeWorkflowMap

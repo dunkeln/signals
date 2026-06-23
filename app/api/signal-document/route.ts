@@ -23,6 +23,6 @@ export async function PUT(request: Request) {
   }
 
   return Response.json(
-    await writeReportDocument(parsed.data.clientSlug, parsed.data.document),
+    await writeReportDocument(fixtureRoute.slug, parsed.data.document),
   );
 }

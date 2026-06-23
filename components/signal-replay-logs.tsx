@@ -12,8 +12,9 @@ export function SignalReplayLogs({
   clientSlug: string;
   lines: ReplayLogLine[];
 }) {
-  const [visibleCount, setVisibleCount] = React.useState(0);
   const running = useSignalSimulationRunning(clientSlug);
+  const [visibleCount, setVisibleCount] = React.useState(0);
+  const displayedCount = running ? visibleCount : lines.length;
 
   React.useEffect(() => {
     if (!running) {
@@ -36,13 +37,13 @@ export function SignalReplayLogs({
   }, [lines, running]);
 
   return (
-    <main className="fixed inset-0 z-50 overflow-auto bg-background p-4 font-mono text-xs leading-5 text-foreground">
+    <div className="w-full pb-12 font-mono text-xs leading-5 text-foreground">
       <pre className="whitespace-pre-wrap">
         {lines
-          .slice(0, visibleCount)
+          .slice(0, displayedCount)
           .map((line) => line.line)
           .join("\n")}
       </pre>
-    </main>
+    </div>
   );
 }

@@ -62,6 +62,13 @@ const candidateReductionSchema = z.object({
   }),
 });
 
+const runtimeTimeScopeSchema = z.object({
+  mode: z.enum(["latest", "all_time"]),
+  latestDays: z.number().int().positive(),
+  from: z.string().min(1).nullable(),
+  to: z.string().min(1).nullable(),
+});
+
 export const runtimeInputSchema = z.object({
   protocolVersion: z.literal(protocolVersion),
   request: z.object({
@@ -78,6 +85,7 @@ export const runtimeInputSchema = z.object({
       pacificLabel: z.string().min(1),
     }),
     chartProtocol: z.custom<ChartProtocolState>(),
+    timeScope: runtimeTimeScopeSchema.optional(),
     workflowMap: z.object({
       nodes: z.array(runtimeWorkflowNodeSchema),
       links: z.array(runtimeWorkflowLinkSchema),
@@ -144,6 +152,7 @@ export interface RuntimeContextPackInput {
     links: ProtocolWorkflowLink[];
   };
   evidenceItems: ProtocolEvidenceItem[];
+  timeScope?: z.infer<typeof runtimeTimeScopeSchema>;
   limits?: {
     maxLinks?: number;
     maxEvidenceItems?: number;
@@ -175,6 +184,7 @@ export function buildRuntimeContextPack({
   chartProtocol,
   workflowMap,
   evidenceItems,
+  timeScope,
   limits,
 }: RuntimeContextPackInput): RuntimeInput {
   const activeLimits = { ...defaultLimits, ...limits };
@@ -206,6 +216,7 @@ export function buildRuntimeContextPack({
       client,
       currentTime: currentPacificTime(),
       chartProtocol,
+      timeScope,
       workflowMap: {
         nodes: workflowMap.nodes,
         links: links.slice(0, activeLimits.maxLinks),
