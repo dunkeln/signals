@@ -7,7 +7,7 @@
 
 ## Project direction
 
-Signal is an FDE application artifact for email-native procurement workflows.
+Signal is a logging layer for email-native procurement workflows.
 The goal is not to build a whole procurement platform; it is to prove one
 convincing vertical slice of the mental model:
 
