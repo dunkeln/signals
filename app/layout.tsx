@@ -1,5 +1,6 @@
 import "./globals.css";
 import { Geist } from "next/font/google";
+import { Analytics } from "@vercel/analytics/next";
 
 import { SiteAnnouncementBanner } from "@/components/site-announcement-banner";
 import { SiteBreadcrumb } from "@/components/site-breadcrumb";
@@ -37,6 +38,7 @@ export default function RootLayout({
           </main>
           <Toaster />
         </TooltipProvider>
+        <Analytics />
       </body>
     </html>
   );

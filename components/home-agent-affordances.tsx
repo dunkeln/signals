@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { track } from "@vercel/analytics";
 import { CheckIcon } from "lucide-react";
 import Image from "next/image";
 
@@ -30,6 +31,7 @@ export function HomeAgentAffordances() {
 
   async function copy(id: string, value: string) {
     await navigator.clipboard.writeText(value);
+    track("Homepage Affordance", { action: id });
     setCopied(id);
     window.setTimeout(() => setCopied(null), 1400);
   }

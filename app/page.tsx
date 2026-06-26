@@ -1,4 +1,5 @@
 import { HomeAgentAffordances } from "@/components/home-agent-affordances";
+import { HomeVideoFeature } from "@/components/home-video-feature";
 import { HomeWorkflowMap } from "@/components/home-workflow-map";
 import { fixtureRoutes, hasFixtureIngress } from "@/lib/fixtures/registry";
 import { compileChartSpec } from "@/lib/protocol/v0";
@@ -33,6 +34,7 @@ export default function Home() {
           See the coordination tax inside AI procurement workflows.
         </h1>
       </div>
+      <HomeVideoFeature />
       <HomeAgentAffordances />
       <HomeWorkflowMap
         spec={spec}

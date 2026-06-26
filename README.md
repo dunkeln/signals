@@ -1,8 +1,14 @@
 # Signals
 
+[Website](https://signals-ws.vercel.app)
+
+[![Signals demo](https://img.youtube.com/vi/GPd2CR9QvK8/maxresdefault.jpg)](https://www.youtube.com/watch?v=GPd2CR9QvK8)
+
 Signals is a logging layer for email-native procurement work.
 
 Procurement rarely begins as a clean workflow. It begins as supplier emails, PDFs, spreadsheets, partial logs, review clicks, stale docs, and people deciding what matters.
+
+**Legacy systems use heavy compliance tools to track corporate workflows, but they fail when execution leaks into unstructured emails and documents. This repository introduces an event-driven telemetry framework that dynamically compiles raw execution trails into a stateful DAG, providing AI agents with the structural context needed to eliminate the ‘coordination tax’ across complex operations.**
 
 Signals structures that into an observable substrate:
 
